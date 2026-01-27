@@ -1,0 +1,41 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Jakarta Barat"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [106.695, -6.135],
+            [106.765, -6.135],
+            [106.765, -6.2],
+            [106.695, -6.2],
+            [106.695, -6.135]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Jakarta Timur"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [106.85, -6.135],
+            [106.92, -6.135],
+            [106.92, -6.2],
+            [106.85, -6.2],
+            [106.85, -6.135]
+          ]
+        ]
+      }
+    }
+  ]
+}

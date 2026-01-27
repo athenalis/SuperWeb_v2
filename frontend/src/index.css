@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  @keyframes swing {
+    0% { transform: rotate(0deg); }
+    20% { transform: rotate(15deg); }
+    40% { transform: rotate(-10deg); }
+    60% { transform: rotate(5deg); }
+    80% { transform: rotate(-5deg); }
+    100% { transform: rotate(0deg); }
+  }
+  .animate-swing {
+    animation: swing 2s infinite ease-in-out;
+    transform-origin: top center;
+  }
+}
+
+.leaflet-tooltip {
+  background: #ffffff;
+  color: #111827;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+}
+
+.leaflet-tooltip::before {
+  display: none !important;
+}
+
+.pin-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,.35));
+  transition: transform 0.2s ease;
+}
+
+.pin-active {
+  animation: pin-pulse 0.5s ease-out;
+}
+
+@keyframes pin-pulse {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.leaflet-container {
+  z-index: 0 !important;
+}
+
+.leaflet-pane,
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 0 !important;
+}
+
+.leaflet-tooltip.visit-tooltip {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  transform: scale(0.2);
+  transform-origin: top center;
+}
+
+.leaflet-tooltip.visit-tooltip::before {
+  display: none !important;
+}
+
+.leaflet-tooltip.visit-tooltip .leaflet-tooltip-content {
+  transform: scale(0.5);
+  transform-origin: top center;
+}
+
+.react-datepicker-wrapper {
+  width: 100%;
+}
+
+.react-datepicker__input-container {
+  width: 100%;
+}
