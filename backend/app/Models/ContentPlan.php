@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class ContentPlan extends Model
 {
     protected $fillable = [
+        'paslon_id',          // ✅ tambah
         'title',
         'description',
         'posting_date',
@@ -16,25 +17,24 @@ class ContentPlan extends Model
 
     protected $casts = [
         'refund_budget' => 'boolean',
-        'posting_date' => 'date',
+        'posting_date'  => 'date',
     ];
 
-    /* ======================
-        RELATIONSHIP
-    ====================== */
+    public function paslon()
+    {
+        return $this->belongsTo(Paslon::class, 'paslon_id');
+    }
 
     public function status()
     {
         return $this->belongsTo(ContentStatus::class);
     }
 
-    // budget (default TIDAK include soft delete)
     public function budget()
     {
         return $this->hasOne(ContentBudget::class);
     }
 
-    // khusus index & detail (include soft delete)
     public function budgetWithTrashed()
     {
         return $this->hasOne(ContentBudget::class)->withTrashed();
@@ -54,15 +54,12 @@ class ContentPlan extends Model
             'influencer_id'
         );
     }
+
     public function ads()
     {
         return $this->hasMany(ContentPlatformAd::class, 'content_plan_id')
             ->withTrashed();
     }
-
-    /* ======================
-        ACCESSOR
-    ====================== */
 
     public function getTotalBudgetAttribute()
     {

@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import api from "../../lib/axios";
+import api from "../../../lib/axios";
 import toast from "react-hot-toast";
 
-
-export default function EditKoordinator() {
+export default function EditRelawan() {
   const navigate = useNavigate();
   const { id } = useParams();
 
@@ -18,19 +17,23 @@ export default function EditKoordinator() {
     city_code: "",
     district_code: "",
     village_code: "",
+    ormas_id: "",
+    Koordinator_name: "",
   });
 
   const [cities, setCities] = useState([]);
   const [districts, setDistricts] = useState([]);
   const [villages, setVillages] = useState([]);
+  const [ormases, setOrmases] = useState([]);
 
-  const [loading, setLoading] = useState(false);
+
+  const [loading, setLoading] = useState(true);
 
   /* =============================
-      LOAD DETAIL KOORDINATOR
+      LOAD DETAIL RELAWAN
   ============================= */
   useEffect(() => {
-    api.get(`/koordinator/${id}`)
+    api.get(`/relawan/${id}`)
       .then((res) => {
         const d = res.data.data;
 
@@ -44,12 +47,16 @@ export default function EditKoordinator() {
           city_code: d.city_code,
           district_code: d.district_code,
           village_code: d.village_code,
+          ormas_id: d.ormas?.id || "",
+          koordinator_name: d.koordinator?.user?.name || "",
         });
 
         // load wilayah
         loadCities(d.province_code);
         loadDistricts(d.city_code);
         loadVillages(d.district_code);
+        loadOrmases(d.ormas_code);
+        loadOrmases();
       })
       .finally(() => setLoading(false));
   }, [id]);
@@ -58,8 +65,8 @@ export default function EditKoordinator() {
       LOAD WILAYAH
   ============================= */
 
-  const loadCities = async (provinceCode) => {
-    const res = await api.get(`/wilayah/cities/${provinceCode}`);
+  const loadCities = async (provCode) => {
+    const res = await api.get(`/wilayah/cities/${provCode}`);
     setCities(res.data);
   };
 
@@ -73,6 +80,11 @@ export default function EditKoordinator() {
     if (!districtCode) return;
     const res = await api.get(`/wilayah/villages/${districtCode}`);
     setVillages(res.data);
+  };
+
+  const loadOrmases = async () => {
+  const res = await api.get("/ormas");
+  setOrmases(res.data.data);
   };
 
 
@@ -104,13 +116,13 @@ const handleSubmit = async (e) => {
   const toastId = toast.loading("Menyimpan perubahan...");
 
   try {
-    const res = await api.put(`/koordinator/${id}`, form);
+    const res = await api.put(`/relawan/${id}`, form);
 
     const akun = res.data?.data?.user;
 
     if (akun) {
       toast.success(
-        `Data koordinator berhasil diperbarui!\nEmail: ${akun.email}\nPassword: ${akun.password}`,
+        `Data relawan berhasil diperbarui!\nEmail: ${akun.email}\nPassword: ${akun.password}`,
         {
           id: toastId,
           duration: 5000,
@@ -124,37 +136,35 @@ const handleSubmit = async (e) => {
         }
       );
     } else {
-      toast.success("Data koordinator berhasil diperbarui", {
+      toast.success("Data relawan berhasil diperbarui", {
         id: toastId,
       });
     }
 
-    navigate(`/koordinator/${id}`);
+    navigate(`/relawan/${id}`);
   } catch (err) {
     console.log(err.response?.data);
 
     const errors = err.response?.data?.errors;
 
     if (errors) {
-      // tampilkan error pertama saja (UX lebih bersih)
       const firstError = Object.values(errors)[0][0];
       toast.error(firstError, { id: toastId });
       return;
     }
 
-    toast.error("Gagal memperbarui data", {
+    toast.error("Gagal memperbarui data relawan", {
       id: toastId,
     });
   }
 };
-
 
   if (loading) return <p className="text-center py-10">Loading...</p>;
 
   return (
     <div className="bg-white rounded-2xl p-8 shadow max-w-8xl mx-auto">
       <h2 className="text-4xl text-blue-900 font-bold mb-6 text-center">
-        Edit Koordinator
+        Edit Relawan
       </h2>
 
       <form onSubmit={handleSubmit} className="space-y-5">
@@ -162,7 +172,7 @@ const handleSubmit = async (e) => {
         {/* Nama */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block mb-3 font-bold">Nama</label>
+          <label className="block mb-1 font-medium">Nama</label>
           <input
             name="nama"
             value={form.nama}
@@ -174,7 +184,7 @@ const handleSubmit = async (e) => {
 
         {/* NIK */}
         <div>
-          <label className="block mb-3 font-bold">NIK</label>
+          <label className="block mb-1 font-medium">NIK</label>
           <input
             name="nik"
             value={form.nik}
@@ -188,7 +198,7 @@ const handleSubmit = async (e) => {
         {/* No HP & TPS */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block mb-3 font-bold">No HP</label>
+            <label className="block mb-1 font-medium">No HP</label>
             <input
               name="no_hp"
               value={form.no_hp}
@@ -199,7 +209,7 @@ const handleSubmit = async (e) => {
           </div>
 
           <div>
-            <label className="block mb-3 font-bold">TPS</label>
+            <label className="block mb-1 font-medium">TPS</label>
             <input
               name="tps"
               value={form.tps}
@@ -210,9 +220,39 @@ const handleSubmit = async (e) => {
           </div>
         </div>
 
+         {/* Ormas/koordinator*/}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block mb-1 font-medium">Ormas</label>
+              <select
+                name="ormas_id"
+                value={form.ormas_id}
+                // disabled
+                onChange={handleChange}
+                className="w-full border rounded-lg px-4 py-2"
+              >
+                <option value="">-</option>
+                {ormases.map(o => (
+                  <option key={o.id} value={o.id}>
+                    {o.nama_ormas}
+                  </option>
+                ))}
+              </select>
+          </div>
+
+          <div>
+            <label className="block mb-1 font-medium">Koordinator</label>
+              <input
+                value={form.koordinator_name}
+                disabled
+                className="w-full border rounded-lg px-4 py-2 bg-gray-100"
+              />
+          </div>
+        </div>
+
         {/* Alamat */}
         <div>
-          <label className="block mb-3 font-bold">Alamat</label>
+          <label className="block mb-1 font-medium">Alamat</label>
           <textarea
             name="alamat"
             value={form.alamat}
@@ -227,7 +267,7 @@ const handleSubmit = async (e) => {
 
           {/* Provinsi */}
           <div>
-            <div className="block mb-3 font-bold">Provinsi</div>
+            <div className="mb-1 font-medium">Provinsi</div>
             <select
               value={31}
               disabled
@@ -239,18 +279,14 @@ const handleSubmit = async (e) => {
 
           {/* Kota */}
           <div>
-            <div className="block mb-3 font-bold">Kota / Kabupaten</div>
+            <div className="mb-1 font-medium">Kota / Kabupaten</div>
             <select
-              name="city_code"
               value={form.city_code}
-              onChange={handleChange}
-              className="w-full border rounded-lg px-4 py-2"
-              required
+              disabled
+              className="w-full border rounded-lg px-4 py-2 bg-gray-100"
             >
-              <option value="" disabled>Pilih Kota</option>
-
-              {cities.map((c) => (
-                <option key={c.city_code} value={c.city_code}>
+              {cities.map(c => (
+                <option key={c.code} value={c.code}>
                   {c.city}
                 </option>
               ))}
@@ -259,44 +295,36 @@ const handleSubmit = async (e) => {
 
           {/* Kecamatan */}
           <div>
-            <div className="block mb-3 font-bold">Kecamatan</div>
+            <div className="mb-1 font-medium">Kecamatan</div>
             <select
-              name="district_code"
               value={form.district_code}
-              onChange={handleChange}
-              className="w-full border rounded-lg px-4 py-2"
-              required
-              disabled={!form.city_code}
+              disabled
+              className="w-full border rounded-lg px-4 py-2 bg-gray-100"
             >
-              <option value="" disabled>Pilih Kecamatan</option>
-
-              {districts.map((d) => (
-                <option key={d.district_code} value={d.district_code}>
+              {districts.map(d => (
+                <option key={d.code} value={d.code}>
                   {d.district}
                 </option>
               ))}
             </select>
+
           </div>
 
           {/* Kelurahan */}
           <div>
-            <div className="block mb-3 font-bold">Kelurahan</div>
+            <div className="mb-1 font-medium">Kelurahan</div>
             <select
-              name="village_code"
               value={form.village_code}
-              onChange={handleChange}
-              className="w-full border rounded-lg px-4 py-2"
-              required
-              disabled={!form.district_code}
+              disabled
+              className="w-full border rounded-lg px-4 py-2 bg-gray-100"
             >
-              <option value="" disabled>Pilih Kelurahan</option>
-
-              {villages.map((v) => (
-                <option key={v.village_code} value={v.village_code}>
+              {villages.map(v => (
+                <option key={v.code} value={v.code}>
                   {v.village}
                 </option>
               ))}
             </select>
+
           </div>
 
         </div>
@@ -312,7 +340,7 @@ const handleSubmit = async (e) => {
 
           <button
             type="button"
-            onClick={() => navigate(`/koordinator/${id}`)}
+            onClick={() => navigate(`/relawan/${id}`)}
             className="text-gray-500"
           >
             Batal

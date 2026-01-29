@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import api from "../../lib/axios";
+import api from "../../../lib/axios";
 import { Icon } from "@iconify/react";
 
 /* =========================

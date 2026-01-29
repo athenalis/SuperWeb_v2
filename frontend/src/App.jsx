@@ -6,16 +6,25 @@ import MainLayout from "./layouts/MainLayout";
 
 import SuperAdmin1 from "./pages/superadmin/index";
 
-import Koordinator from "./pages/koordinator/index";
-import CreateKoordinator from "./pages/koordinator/create";
-import EditKoordinator from "./pages/koordinator/edit";
-import RiwayatKoordinator from "./pages/koordinator/history";
-import DetailKoordinator from "./pages/koordinator/detail";
+import Koordinator from "./pages/koordinator/kunjungan/index";
+import CreateKoordinator from "./pages/koordinator/kunjungan/create";
+import EditKoordinator from "./pages/koordinator/kunjungan/edit";
+import DetailKoordinator from "./pages/koordinator/kunjungan/detail";
 
-import Relawan from "./pages/relawan/index";
-import DetailRelawan from "./pages/relawan/detail";
-import EditRelawan from "./pages/relawan/edit";
-import CreateRelawan from "./pages/relawan/create";
+import KoordinatorApk from "./pages/koordinator/apk/index";
+import CreateKoordinatorApk from "./pages/koordinator/apk/create";
+import EditKoordinatorApk from "./pages/koordinator/apk/edit";
+import DetailKoordinatorApk from "./pages/koordinator/apk/detail";
+
+import RelawanApk from "./pages/relawan/apk/index";
+import DetailRelawanApk from "./pages/relawan/apk/detail";
+import EditRelawanApk from "./pages/relawan/apk/edit";
+import CreateRelawanApk from "./pages/relawan/apk/create";
+
+import Relawan from "./pages/relawan/kunjungan/index";
+import DetailRelawan from "./pages/relawan/kunjungan/detail";
+import EditRelawan from "./pages/relawan/kunjungan/edit";
+import CreateRelawan from "./pages/relawan/kunjungan/create";
 
 import Kunjungan from "./pages/kunjungan/index";
 import KunjunganAnggota from "./pages/kunjungan/anggota";
@@ -71,8 +80,6 @@ export default function App() {
       {/* SUPERADMIN (dengan layout sendiri) */}
       <Route path="/superadmin" element={<SuperAdmin />} />
 
-      <Route path="/apk" element={<Apk />} />
-
       {/* SEMUA HARUS LOGIN */}
       <Route element={<RequireAuth />}>
         <Route path="/" element={<MainLayout />}>
@@ -82,22 +89,25 @@ export default function App() {
 
           {/* ================= ADMIN_PASLON ONLY (role_id: 2) ================= */}
           <Route element={<RequireRole allowedRoleIds={[2]} />}>
-            <Route path="koordinator" element={<Koordinator />} />
-            <Route path="koordinator/create" element={<CreateKoordinator />} />
-            <Route path="koordinator/:id/edit" element={<EditKoordinator />} />
-            <Route path="koordinator/:id/history" element={<RiwayatKoordinator />} />
-            <Route path="koordinator/:id" element={<DetailKoordinator />} />
+            <Route path="koordinator/kunjungan" element={<Koordinator />} />
+            <Route path="koordinator/kunjungan/create" element={<CreateKoordinator />} />
+            <Route path="koordinator/kunjungan/:id/edit" element={<EditKoordinator />} />
+            <Route path="koordinator/kunjungan/:id" element={<DetailKoordinator />} />
+            <Route path="koordinator/apk" element={<KoordinatorApk />} />
+            <Route path="koordinator/apk/create" element={<CreateKoordinatorApk />} />
+            <Route path="koordinator/apk/:id/edit" element={<EditKoordinatorApk />} />
+            <Route path="koordinator/apk/:id" element={<DetailKoordinatorApk />} />
             <Route path="suara/dashboard" element={<Suara />} />
             <Route path="suara/test" element={<SuaraTest />} />
             <Route path="suara/paslon" element={<Paslon />} />
             <Route path="suara/partai" element={<Partai />} />
             <Route path="suara/dpt" element={<DPT />} />
             <Route path="suara/analisis" element={<AnalisisPaslon />} />
-            <Route path="content" element={<Content />} />
-            <Route path="content/create" element={<CreateContent />} />
-            <Route path="content/:id/edit" element={<EditContent />} />
-            <Route path="content/:id" element={<DetailContent />} />
-            <Route path="content/:id/analytic" element={<AnalyticContent />} />
+            <Route path="konten" element={<Content />} />
+            <Route path="konten/create" element={<CreateContent />} />
+            <Route path="konten/:id/edit" element={<EditContent />} />
+            <Route path="konten/:id" element={<DetailContent />} />
+            <Route path="konten/:id/analytic" element={<AnalyticContent />} />
 
           </Route>
 
@@ -105,26 +115,41 @@ export default function App() {
           <Route element={<RequireRole allowedRoleIds={[2, 4]} />}>
             <Route path="relawan" element={<Relawan />} />
             <Route path="relawan/:id" element={<DetailRelawan />} />
+            <Route path="relawan/apk/:id" element={<DetailRelawanApk />} />
+            <Route path="relawan/apk" element={<RelawanApk />} />
           </Route>
 
           {/* =========== KUNJUNGAN_KOORDINATOR ONLY (role_id: 4) =========== */}
           <Route element={<RequireRole allowedRoleIds={[4]} />}>
             <Route path="relawan/create" element={<CreateRelawan />} />
             <Route path="relawan/:id/edit" element={<EditRelawan />} />
+            <Route path="relawan/apk" element={<RelawanApk />} />
+            <Route path="relawan/apk/create" element={<CreateRelawanApk />} />
+            <Route path="relawan/apk/:id/edit" element={<EditRelawanApk />} />
+            <Route path="relawan/apk/:id" element={<DetailRelawanApk />} />
           </Route>
 
-          {/* =========== ADMIN_PASLON, KUNJUNGAN_KOORDINATOR & RELAWAN (role_id: 2, 4, 6) =========== */}
-          <Route element={<RequireRole allowedRoleIds={[2, 4, 6]} />}>
+          {/* =========== KUNJUNGAN (role_id: 6 only) =========== */}
+          <Route element={<RequireRole allowedRoleIds={[6]} />}>
             <Route path="kunjungan" element={<Kunjungan />} />
             <Route path="kunjungan/anggota" element={<KunjunganAnggota />} />
             <Route path="kunjungan/:id" element={<KunjunganDetail />} />
             <Route path="kunjungan/:id/edit" element={<KunjunganEdit />} />
+          </Route>
+
+          {/* =========== INBOX/NOTIF (role_id: 4 & 6 only) =========== */}
+          <Route element={<RequireRole allowedRoleIds={[4, 6]} />}>
             <Route path="inbox" element={<Inbox />} />
           </Route>
 
           {/* =========== SUPER ADMIN (role_id: 1) =========== */}
           <Route element={<RequireRole allowedRoleIds={[1]} />}>
             <Route path="superadmin" element={<SuperAdmin1 />} />
+          </Route>
+
+          {/* =========== APK (role_id: 5,7, + relawan_apk kalau ada) =========== */}
+          <Route element={<RequireRole allowedRoleIds={[5, 7]} />}>
+            <Route path="apk" element={<Apk />} />
           </Route>
 
         </Route>

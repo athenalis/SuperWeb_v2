@@ -1,16 +1,23 @@
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 
-export default function RequireRole({ allowedRoles }) {
+export default function RequireRole({ allowedRoleIds = [] }) {
   const token = localStorage.getItem("token");
-  const role = localStorage.getItem("role");
+  const roleId = Number(localStorage.getItem("role_id"));
+  const location = useLocation();
 
-  // kalau belum login
-  if (!token) {
-    return <Navigate to="/login" replace />;
+  // belum login
+  if (!token) return <Navigate to="/login" replace state={{ from: location }} />;
+
+  // kalau tidak ada restriction, izinkan (lebih aman untuk dev)
+  if (!Array.isArray(allowedRoleIds) || allowedRoleIds.length === 0) {
+    return <Outlet />;
   }
 
-  // kalau role tidak diizinkan
-  if (!allowedRoles.includes(role)) {
+  const ok = Number.isFinite(roleId) && allowedRoleIds.includes(roleId);
+
+  if (!ok) {
+    // lebih enak UX-nya kalau ke halaman unauthorized,
+    // tapi kalau belum ada, boleh ke dashboard dulu.
     return <Navigate to="/dashboard" replace />;
   }
 

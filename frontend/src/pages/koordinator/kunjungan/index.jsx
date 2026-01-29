@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import api from "../../lib/axios";
+import api from "../../../lib/axios";
 import { Icon } from "@iconify/react";
 import toast from "react-hot-toast";
 

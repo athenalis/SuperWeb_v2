@@ -17,6 +17,7 @@ class AdminApk extends Model
         'paslon_id',
         'admin_paslon_id',
         'nama',
+        'nik',
         'no_hp',
         'status',
     ];

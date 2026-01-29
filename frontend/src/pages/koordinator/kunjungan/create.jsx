@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@iconify/react";
 import toast from "react-hot-toast";
-import api from "../../lib/axios";
+import api from "../../../lib/axios";
 
 export default function InputKoordinator({ onClose }) {
   const navigate = useNavigate();

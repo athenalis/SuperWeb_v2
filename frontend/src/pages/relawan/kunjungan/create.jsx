@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@iconify/react";
 import Select from "react-select";
 import toast from "react-hot-toast";
-import api from "../../lib/axios";
+import api from "../../../lib/axios";
 
 
 export default function InputRelawan({ onClose }) {

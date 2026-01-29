@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
-use App\Models\AdminPaslon;
-use App\Models\Paslon;
 use App\Models\User;
+use App\Models\Paslon;
+use App\Models\AdminPaslon;
 use Illuminate\Http\Request;
+use App\Models\UserCredential;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Hash;
 
 class AdminPaslonController extends Controller
@@ -54,7 +56,8 @@ class AdminPaslonController extends Controller
     {
         $adminPaslon = AdminPaslon::with([
             'paslon:id,cagub,cawagub,nomor_urut,image',
-            'user:id,name,email,role_id'
+            'user:id,name,email,role_id',
+            'user.activeCredential:id,user_id,encrypted_password,type,is_active',
         ])->find($id);
 
         if (!$adminPaslon) {
@@ -62,6 +65,22 @@ class AdminPaslonController extends Controller
                 'status' => false,
                 'message' => 'Admin Paslon tidak ditemukan'
             ], 404);
+        }
+
+        if ($adminPaslon->user) {
+            $encrypted = optional($adminPaslon->user->activeCredential)->encrypted_password;
+
+            $adminPaslon->user->credential_password = null;
+
+            if ($encrypted) {
+                try {
+                    $adminPaslon->user->credential_password = Crypt::decryptString($encrypted);
+                } catch (\Throwable $e) {
+                    $adminPaslon->user->credential_password = null;
+                }
+            }
+
+            unset($adminPaslon->user->activeCredential); 
         }
 
         return response()->json([
@@ -79,7 +98,6 @@ class AdminPaslonController extends Controller
         $paslon = Paslon::findOrFail($request->paslon_id);
         $nomorUrut = $paslon->nomor_urut;
 
-        // 1️⃣ Cek apakah admin paslon sudah ada
         $existing = AdminPaslon::where('paslon_id', $paslon->id)->first();
         if ($existing) {
             return response()->json([
@@ -88,39 +106,51 @@ class AdminPaslonController extends Controller
             ], 400);
         }
 
-        // 2️⃣ Generate user
         $name = "adminpaslon{$nomorUrut}";
         $email = "adminpaslon{$nomorUrut}@gmail.com";
         $plainPassword = "adminpaslon{$nomorUrut}" . rand(100, 999);
 
-        $user = User::create([
-            'name' => $name,
-            'email' => $email,
-            'password' => Hash::make($plainPassword),
-            // 'plain_password' => $plainPassword, // simpan supaya bisa dikirim ke admin
-            'role_id' => '2',
-            'status' => 'active'
-        ]);
+        DB::beginTransaction();
+        try {
+            $user = User::create([
+                'name' => $name,
+                'email' => $email,
+                'password' => Hash::make($plainPassword),
+                'role_id' => 2,
+            ]);
 
-        // 3️⃣ Buat admin paslon
-        $adminPaslon = AdminPaslon::create([
-            'user_id' => $user->id,
-            'paslon_id' => $paslon->id
-        ]);
+            UserCredential::create([
+                'user_id' => $user->id,
+                'encrypted_password' => Crypt::encryptString($plainPassword),
+                'type' => 'initial', 
+                'is_active' => 1,
+                'used_at' => null,
+            ]);
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Admin Paslon berhasil dibuat',
-            'data' => [
-                'user' => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'password' => $plainPassword, // kasih ke frontend supaya bisa diinformasikan
-                    'role' => $user->role
-                ],
-                'admin_paslon' => $adminPaslon
-            ]
-        ]);
+            $adminPaslon = AdminPaslon::create([
+                'user_id' => $user->id,
+                'paslon_id' => $paslon->id
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Admin Paslon berhasil dibuat',
+                'data' => [
+                    'user' => [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'email' => $user->email,
+                        'password' => $plainPassword, 
+                        'role_id' => $user->role_id,
+                    ],
+                    'admin_paslon' => $adminPaslon
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
     }
 }

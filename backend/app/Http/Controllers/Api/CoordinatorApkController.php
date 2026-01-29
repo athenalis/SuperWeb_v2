@@ -2,42 +2,58 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
-use App\Models\CoordinatorApk;
 use App\Models\User;
-use App\Models\AdminPaslon; // <- asumsi ada model ini
-use App\Helpers\PhoneHelper; // kalau kamu memang pakai helper ini
+use App\Models\AdminApk;
+use App\Models\AdminPaslon;
+use App\Helpers\PhoneHelper;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use App\Models\CoordinatorApk;
+use App\Models\UserCredential;
 use Illuminate\Support\Facades\DB;
+use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Maatwebsite\Excel\Facades\Excel;
+use App\Exports\KoordinatorApkExport;
+use App\Imports\KoordinatorApkImport;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Validator;
 
 class CoordinatorApkController extends Controller
 {
-    /**
-     * Ambil paslon_id berdasarkan admin_paslon yang login.
-     * Asumsi: tabel admin_paslons punya kolom user_id & paslon_id
-     */
-    private function currentAdminPaslonId(): int
+    private function currentAdminApk(): AdminApk
     {
-        $userId = Auth::id();
+        $adminApk = AdminApk::where('user_id', Auth::id())->first();
 
-        $admin = AdminPaslon::where('user_id', $userId)->first();
-
-        if (!$admin || !$admin->paslon_id) {
+        if (!$adminApk || !$adminApk->paslon_id) {
             abort(response()->json([
                 'status' => false,
-                'message' => 'Admin paslon tidak memiliki paslon_id'
+                'message' => 'Admin APK tidak ditemukan / tidak valid'
             ], 403));
         }
 
-        return (int) $admin->paslon_id;
+        return $adminApk;
+    }
+
+    private function currentPaslonId(): int
+    {
+        return (int) $this->currentAdminApk()->paslon_id;
+    }
+
+    private function roleSlug($user): ?string
+    {
+        return DB::table('roles')->where('id', $user->role_id)->value('role');
+    }
+
+    private function paslonSuffix(int $paslonId): string
+    {
+        $nomorUrut = (int) (DB::table('paslons')->where('id', $paslonId)->value('nomor_urut') ?? 0);
+        return $nomorUrut ? str_pad((string)$nomorUrut, 2, '0', STR_PAD_LEFT) : (string)$paslonId;
     }
 
     public function index(Request $request)
     {
-        $paslonId = $this->currentAdminPaslonId();
+        $paslonId = $this->currentPaslonId();
 
         $query = CoordinatorApk::with([
             'province:province_code,province',
@@ -66,11 +82,9 @@ class CoordinatorApkController extends Controller
 
         $query->orderByDesc('id');
 
-        if ($request->filled('per_page')) {
-            $data = $query->paginate((int) $request->per_page);
-        } else {
-            $data = $query->get();
-        }
+        $data = $request->filled('per_page')
+            ? $query->paginate((int) $request->per_page)
+            : $query->get();
 
         return response()->json([
             'status' => true,
@@ -80,7 +94,7 @@ class CoordinatorApkController extends Controller
 
     public function show($id)
     {
-        $paslonId = $this->currentAdminPaslonId();
+        $paslonId = $this->currentPaslonId();
 
         $data = CoordinatorApk::with([
             'province',
@@ -104,52 +118,67 @@ class CoordinatorApkController extends Controller
         ]);
     }
 
-    /**
-     * FE panggil ini dulu sebelum create, biar bisa munculin popup:
-     * - jika nik belum pernah ada: exists=false
-     * - jika nik ada tapi soft-deleted: exists=true, deleted=true (boleh restore)
-     * - jika nik ada dan aktif: exists=true, deleted=false
-     */
     public function checkNik(Request $request)
     {
         $request->validate([
             'nik' => 'required|digits:16'
         ]);
 
-        $paslonId = $this->currentAdminPaslonId();
+        $paslonId = $this->currentPaslonId();
 
-        $row = CoordinatorApk::withTrashed()
-            ->where('paslon_id', $paslonId) // ✅ scope per paslon admin
+        // 1) cek aktif di paslon current
+        $activeHere = CoordinatorApk::where('paslon_id', $paslonId)
             ->where('nik', $request->nik)
+            ->whereNull('deleted_at')
             ->first();
 
-        if (!$row) {
+        if ($activeHere) {
             return response()->json([
-                'exists' => false,
+                'exists' => true,
+                'deleted' => false,
+                'message' => 'NIK sudah terdaftar dan masih aktif di paslon ini.',
+                'data' => [
+                    'id' => $activeHere->id,
+                    'nama' => $activeHere->nama,
+                    'nik' => $activeHere->nik,
+                ]
+            ]);
+        }
+
+        // 2) cek soft delete di paslon manapun
+        $softDeleted = CoordinatorApk::withTrashed()
+            ->where('nik', $request->nik)
+            ->whereNotNull('deleted_at')
+            ->orderByDesc('deleted_at')
+            ->first();
+
+        if ($softDeleted) {
+            return response()->json([
+                'exists' => true,
+                'deleted' => true,
+                'message' => 'NIK pernah terdaftar dan saat ini nonaktif (soft delete). Bisa direstore ke paslon ini.',
+                'data' => [
+                    'id' => $softDeleted->id,
+                    'nama' => $softDeleted->nama,
+                    'nik' => $softDeleted->nik,
+                    'old_paslon_id' => $softDeleted->paslon_id,
+                ]
             ]);
         }
 
         return response()->json([
-            'exists' => true,
-            'deleted' => (bool) $row->trashed(),
-            'message' => $row->trashed()
-                ? 'NIK pernah terdaftar dan saat ini nonaktif (soft delete). Bisa direstore.'
-                : 'NIK sudah terdaftar dan masih aktif.',
-            'data' => [
-                'id' => $row->id,
-                'nama' => $row->nama,
-                'nik' => $row->nik,
-            ]
+            'exists' => false
         ]);
     }
 
     public function store(Request $request)
     {
-        $paslonId = $this->currentAdminPaslonId();
+        $paslonId = $this->currentPaslonId();
 
-        if (class_exists(\App\Helpers\PhoneHelper::class) && $request->filled('no_hp')) {
+        // optional normalize no_hp
+        if (class_exists(PhoneHelper::class) && $request->filled('no_hp')) {
             $request->merge([
-                'no_hp' => \App\Helpers\PhoneHelper::normalize($request->no_hp),
+                'no_hp' => PhoneHelper::normalize($request->no_hp),
             ]);
         }
 
@@ -174,36 +203,43 @@ class CoordinatorApkController extends Controller
             ], 422);
         }
 
-        $existingUserNik = User::withTrashed()
+        // ✅ cek aktif di paslon ini
+        $existingCoordinatorHere = CoordinatorApk::where('paslon_id', $paslonId)
             ->where('nik', $request->nik)
+            ->whereNull('deleted_at')
             ->first();
 
-        if ($existingUserNik) {
+        if ($existingCoordinatorHere) {
             return response()->json([
                 'status' => false,
                 'message' => 'NIK sudah terdaftar'
             ], 422);
         }
 
-        $existingCoordinator = CoordinatorApk::withTrashed()
-            ->where('paslon_id', $paslonId)
+        // ✅ kalau ada soft delete di mana pun => suruh restore
+        $softDeleted = CoordinatorApk::withTrashed()
             ->where('nik', $request->nik)
+            ->whereNotNull('deleted_at')
+            ->orderByDesc('deleted_at')
             ->first();
 
-        if ($existingCoordinator && $existingCoordinator->trashed()) {
+        if ($softDeleted) {
             return response()->json([
                 'status' => false,
                 'code' => 'NIK_SOFT_DELETED',
                 'message' => 'NIK pernah terdaftar dan saat ini nonaktif. Setujui restore?',
                 'data' => [
-                    'id' => $existingCoordinator->id,
-                    'nama' => $existingCoordinator->nama,
-                    'nik' => $existingCoordinator->nik,
+                    'id' => $softDeleted->id,
+                    'nama' => $softDeleted->nama,
+                    'nik' => $softDeleted->nik,
+                    'old_paslon_id' => $softDeleted->paslon_id,
                 ]
             ], 409);
         }
 
-        if ($existingCoordinator && !$existingCoordinator->trashed()) {
+        // ✅ cek users.nik unique (prevent SQL error)
+        $existingUserNik = User::withTrashed()->where('nik', $request->nik)->first();
+        if ($existingUserNik) {
             return response()->json([
                 'status' => false,
                 'message' => 'NIK sudah terdaftar'
@@ -212,17 +248,37 @@ class CoordinatorApkController extends Controller
 
         $result = DB::transaction(function () use ($request, $paslonId) {
 
-            $nameClean = strtolower(preg_replace('/\s+/', '', $request->nama));
-            $email = $nameClean . rand(1000, 9999) . '@gmail.com';
+            $nameClean = strtolower(trim($request->nama));
+            $nameClean = preg_replace('/\s+/', '', $nameClean);
+            $nameClean = preg_replace('/[^a-z0-9]/', '', $nameClean);
+            if ($nameClean === '') $nameClean = 'user';
+
+            // generate email unik
+            do {
+                $email = $nameClean . rand(1000, 9999) . '@gmail.com';
+            } while (User::where('email', $email)->exists());
+
             $passwordPlain = $nameClean . rand(1000, 9999);
 
+            // 1) create user (HASH)
             $user = User::create([
                 'name'     => $request->nama,
                 'nik'      => $request->nik,
                 'email'    => $email,
                 'password' => Hash::make($passwordPlain),
+                'role_id'  => 5,
             ]);
 
+            // ✅ 2) create user_credentials (ENCRYPT reversible)
+            UserCredential::create([
+                'user_id' => $user->id,
+                'encrypted_password' => Crypt::encryptString($passwordPlain),
+                'type' => 'initial',
+                'is_active' => 1,
+                'used_at' => null,
+            ]);
+
+            // 3) create coordinator
             $row = CoordinatorApk::create([
                 'user_id' => $user->id,
                 'paslon_id' => $paslonId,
@@ -253,30 +309,25 @@ class CoordinatorApkController extends Controller
                 'coordinator' => $result['row'],
                 'user' => [
                     'email' => $result['email'],
-                    'password' => $result['password'],
+                    'password' => $result['password'], // tampilkan sekali saat create
                 ]
             ]
         ], 201);
     }
-
+    /**
+     * Restore soft-deleted NIK dari paslon manapun,
+     * lalu pindahkan paslon_id ke paslon admin_apk yang login.
+     */
     public function restoreByNik(Request $request)
     {
         $request->validate([
             'nik' => 'required|digits:16'
         ]);
 
-        $adminPaslon = AdminPaslon::where('user_id', Auth::id())->first();
-        if (!$adminPaslon) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Admin paslon tidak ditemukan / tidak valid'
-            ], 403);
-        }
+        $paslonId = $this->currentPaslonId();
 
-        $targetPaslonId = (int) $adminPaslon->paslon_id;
-
-        // 1) Pastikan di paslon target belum ada NIK aktif
-        $alreadyActiveInTarget = CoordinatorApk::where('paslon_id', $targetPaslonId)
+        // Pastikan di paslon target belum ada NIK aktif
+        $alreadyActiveInTarget = CoordinatorApk::where('paslon_id', $paslonId)
             ->where('nik', $request->nik)
             ->whereNull('deleted_at')
             ->exists();
@@ -288,7 +339,7 @@ class CoordinatorApkController extends Controller
             ], 422);
         }
 
-        // 2) Ambil data soft-deleted NIK ini (dari paslon manapun)
+        // Ambil data soft delete dari paslon manapun
         $row = CoordinatorApk::withTrashed()
             ->with(['user' => fn($q) => $q->withTrashed()])
             ->where('nik', $request->nik)
@@ -303,22 +354,11 @@ class CoordinatorApkController extends Controller
             ], 404);
         }
 
-        DB::transaction(function () use ($row, $targetPaslonId, $adminPaslon) {
-
-            // ✅ restore row
+        DB::transaction(function () use ($row, $paslonId) {
             $row->restore();
-
-            // ✅ pindahkan ke paslon admin yang melakukan restore
-            $row->paslon_id = $targetPaslonId;
-
-            // Kalau tabel kamu punya admin_paslon_id, aktifkan ini:
-            if (isset($row->admin_paslon_id)) {
-                $row->admin_paslon_id = $adminPaslon->id;
-            }
-
+            $row->paslon_id = $paslonId; // pindah paslon
             $row->save();
 
-            // optional: restore user kalau user ikut soft delete
             if ($row->user && method_exists($row->user, 'restore') && $row->user->trashed()) {
                 $row->user->restore();
             }
@@ -328,16 +368,19 @@ class CoordinatorApkController extends Controller
 
         return response()->json([
             'status' => true,
-            'message' => 'Koordinator APK berhasil direstore',
+            'message' => 'Koordinator APK berhasil direstore dan dipindahkan ke paslon ini',
             'data' => $row
         ]);
     }
 
     public function update(Request $request, $id)
     {
-        $paslonId = $this->currentAdminPaslonId();
+        $paslonId = $this->currentPaslonId();
 
-        $row = CoordinatorApk::where('paslon_id', $paslonId)->find($id);
+        $row = CoordinatorApk::with('user')
+            ->where('paslon_id', $paslonId)
+            ->find($id);
+
         if (!$row) {
             return response()->json([
                 'status' => false,
@@ -360,7 +403,7 @@ class CoordinatorApkController extends Controller
             'city_code'     => 'required|exists:cities,city_code',
             'district_code' => 'required|exists:districts,district_code',
             'village_code'  => 'required|exists:villages,village_code',
-            'status'        => 'nullable|string',
+            'status'        => 'nullable|in:inactive,active',
         ], [
             'nama.regex' => 'Nama tidak boleh mengandung angka'
         ]);
@@ -372,6 +415,7 @@ class CoordinatorApkController extends Controller
             ], 422);
         }
 
+        // ✅ nik tidak boleh bentrok dengan record lain di paslon yang sama (include soft deleted)
         $nikClash = CoordinatorApk::withTrashed()
             ->where('paslon_id', $paslonId)
             ->where('nik', $request->nik)
@@ -385,37 +429,116 @@ class CoordinatorApkController extends Controller
             ], 422);
         }
 
-        $row->update([
-            'province_code' => $request->province_code,
-            'city_code' => $request->city_code,
-            'district_code' => $request->district_code,
-            'village_code' => $request->village_code,
-            'nama' => $request->nama,
-            'nik' => $request->nik,
-            'no_hp' => $request->no_hp,
-            'alamat' => $request->alamat,
-            'status' => $request->input('status', $row->status),
-        ]);
-
+        // ✅ kalau nik diganti, pastikan users.nik ga dipakai user lain
         if ($row->user) {
-            $row->user->update([
-                'name' => $request->nama,
-                'nik'  => $request->nik,
-            ]);
+            $nikUsedByOtherUser = User::withTrashed()
+                ->where('nik', $request->nik)
+                ->where('id', '!=', $row->user->id)
+                ->exists();
+
+            if ($nikUsedByOtherUser) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'NIK sudah terdaftar'
+                ], 422);
+            }
         }
+
+        $nameChanged = trim((string) $row->nama) !== trim((string) $request->nama);
+
+        $newEmail = null;
+        $newPasswordPlain = null;
+
+        DB::transaction(function () use (
+            $row,
+            $request,
+            $nameChanged,
+            &$newEmail,
+            &$newPasswordPlain
+        ) {
+            // 1) update coordinator
+            $row->update([
+                'province_code' => $request->province_code,
+                'city_code'     => $request->city_code,
+                'district_code' => $request->district_code,
+                'village_code'  => $request->village_code,
+                'nama'          => $request->nama,
+                'nik'           => $request->nik,
+                'no_hp'         => $request->no_hp,
+                'alamat'        => $request->alamat,
+                'status'        => $request->input('status', $row->status),
+            ]);
+
+            // 2) sync user
+            if ($row->user) {
+                $userUpdate = [
+                    'name' => $request->nama,
+                    'nik'  => $request->nik,
+                ];
+
+                // kalau NAMA berubah -> ganti email & password ikut nama
+                if ($nameChanged) {
+                    $base = strtolower(trim($request->nama));
+                    $base = preg_replace('/\s+/', '', $base);
+                    $base = preg_replace('/[^a-z0-9]/', '', $base);
+                    if ($base === '') $base = 'user';
+
+                    // generate email unik
+                    do {
+                        $rand = rand(1000, 9999);
+                        $newEmail = $base . $rand . '@gmail.com';
+                    } while (
+                        User::where('email', $newEmail)
+                        ->where('id', '!=', $row->user->id)
+                        ->exists()
+                    );
+
+                    $newPasswordPlain = $base . rand(1000, 9999);
+
+                    $userUpdate['email'] = $newEmail;
+                    $userUpdate['password'] = Hash::make($newPasswordPlain);
+                }
+
+                $row->user->update($userUpdate);
+
+                // ✅ 3) kalau password berubah -> rotate user_credentials juga
+                if ($nameChanged && $newPasswordPlain) {
+                    UserCredential::where('user_id', $row->user->id)
+                        ->where('is_active', 1)
+                        ->update([
+                            'is_active' => 0,
+                            'used_at' => now(),
+                        ]);
+
+                    UserCredential::create([
+                        'user_id' => $row->user->id,
+                        'encrypted_password' => Crypt::encryptString($newPasswordPlain),
+                        'type' => 'reactive',
+                        'is_active' => 1,
+                        'used_at' => null,
+                    ]);
+                }
+            }
+        });
 
         $row->load(['province', 'city', 'district', 'village', 'user']);
 
         return response()->json([
             'status' => true,
             'message' => 'Koordinator APK berhasil diperbarui',
-            'data' => $row
+            'data' => [
+                'coordinator' => $row,
+                'user' => $nameChanged ? [
+                    'email' => $newEmail,
+                    'password' => $newPasswordPlain, // tampilkan sekali saat update
+                ] : null
+            ]
         ]);
     }
 
     public function destroy($id)
     {
-        $paslonId = $this->currentAdminPaslonId();
+        $paslonId = $this->currentPaslonId();
 
         $row = CoordinatorApk::with(['user'])
             ->where('paslon_id', $paslonId)
@@ -431,7 +554,7 @@ class CoordinatorApkController extends Controller
         DB::transaction(function () use ($row) {
             $row->delete();
             if ($row->user && method_exists($row->user, 'delete')) {
-                $row->user->delete();
+                $row->user->delete(); // optional: soft delete user
             }
         });
 
@@ -439,5 +562,98 @@ class CoordinatorApkController extends Controller
             'status' => true,
             'message' => 'Koordinator APK berhasil dihapus'
         ]);
+    }
+
+    public function import(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['status' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        // wajib admin_apk
+        $roleSlug = DB::table('roles')->where('id', $user->role_id)->value('role');
+        if ($roleSlug !== 'admin_apk') {
+            return response()->json([
+                'status' => false,
+                'message' => 'Hanya admin_apk yang boleh import koordinator APK'
+            ], 403);
+        }
+
+        $request->validate([
+            'file' => 'required|file|mimes:xls,xlsx,csv',
+        ]);
+
+        $adminApk = AdminApk::where('user_id', $user->id)->whereNull('deleted_at')->first();
+        $paslonId = (int) ($adminApk?->paslon_id ?? 0);
+
+        if (!$paslonId) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Admin APK tidak valid / tidak punya paslon.'
+            ], 403);
+        }
+
+        $import = new \App\Imports\KoordinatorApkImport($paslonId);
+
+        try {
+            Excel::import($import, $request->file('file'));
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Import koordinator APK selesai',
+                'data' => [
+                    'successCount'     => $import->successCount,
+                    'failed_rows'      => $import->failedRows,
+                    'created_accounts' => $import->createdAccounts,
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Gagal import: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function export(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user) return response()->json(['message' => 'Unauthorized'], 401);
+
+        $inputPassword = $request->input('password');
+        if (!$inputPassword || !Hash::check($inputPassword, $user->password)) {
+            return response()->json(['message' => 'Password salah'], 403);
+        }
+
+        $roleSlug = $this->roleSlug($user);
+
+        if (!in_array($roleSlug, ['admin_paslon', 'admin_apk'], true)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Hanya admin paslon atau admin apk yang dapat export koordinator apk'
+            ], 403);
+        }
+
+        // tentukan paslonId dari role
+        if ($roleSlug === 'admin_apk') {
+            $adminApk = AdminApk::where('user_id', $user->id)->first();
+            $paslonId = (int) ($adminApk?->paslon_id ?? 0);
+        } else {
+            $adminPaslon = AdminPaslon::where('user_id', $user->id)->whereNull('deleted_at')->first();
+            $paslonId = (int) ($adminPaslon?->paslon_id ?? 0);
+        }
+
+        if (!$paslonId) {
+            return response()->json(['status' => false, 'message' => 'Paslon tidak ditemukan'], 403);
+        }
+
+        $suffix = $this->paslonSuffix($paslonId);
+        $filename = "KOORDINATOR_APK_{$suffix}.xlsx";
+
+        $response = Excel::download(new KoordinatorApkExport($paslonId, $roleSlug, $suffix), $filename);
+        $response->headers->set('Cache-Control', 'no-store, no-cache');
+        $response->headers->set('Access-Control-Expose-Headers', 'Content-Disposition');
+        return $response;
     }
 }

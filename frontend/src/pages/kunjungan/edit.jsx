@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { Icon } from "@iconify/react";
-import api from "../../lib/axios";
+// import api from "../../lib/axios";
 import { validateKTP } from "../../lib/ktpValidator";
 import CameraCapture from "../../components/CameraCapture";
 

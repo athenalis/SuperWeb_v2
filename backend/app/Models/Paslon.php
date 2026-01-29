@@ -21,6 +21,16 @@ class Paslon extends Model
         return $this->hasOne(AdminPaslon::class, 'paslon_id');
     }
 
+    public function contentPlans()
+    {
+        return $this->hasMany(ContentPlan::class, 'paslon_id');
+    }
+
+    public function totalBudget()
+    {
+        return $this->hasOne(TotalBudget::class, 'paslon_id');
+    }
+
     public function parties()
     {
         return $this->belongsToMany(

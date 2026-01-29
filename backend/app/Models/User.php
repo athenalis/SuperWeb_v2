@@ -96,4 +96,22 @@ class User extends Authenticatable
     {
         return $this->role?->role;
     }
+
+    public function getRoleSlugAttribute()
+    {
+        // role relation -> ambil string slug role
+        return $this->role?->role; // contoh: "kunjungan_koordinator"
+    }
+
+    public function credential()
+    {
+        return $this->hasOne(UserCredential::class, 'user_id', 'id');
+    }
+
+    public function activeCredential()
+    {
+        return $this->hasOne(UserCredential::class, 'user_id', 'id')
+            ->where('is_active', 1)
+            ->latest('id');
+    }
 }

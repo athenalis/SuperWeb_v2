@@ -8,7 +8,6 @@ import CameraCapture from "../../components/CameraCapture";
 import { validateKTP } from "../../lib/ktpValidator";
 import { offlineDb } from "../../lib/offlineDb";
 
-
 const generateOfflineId = () => `off_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
 const maxDate17 = () => {

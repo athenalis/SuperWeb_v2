@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { toast } from "react-hot-toast";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import api from "../../lib/axios";
+import api from "../../../lib/axios";
 import { Icon } from "@iconify/react";
 
 /* =========================

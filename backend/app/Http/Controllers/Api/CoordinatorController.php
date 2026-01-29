@@ -18,8 +18,9 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Crypt;
-use App\Exports\KoordinatorExport;
+use App\Exports\KoordinatorKunjunganExport;
 use App\Imports\KoordinatorImport;
+use App\Imports\KoordinatorKunjunganImport;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -36,6 +37,17 @@ class CoordinatorController extends Controller
         }
 
         return (int) $id;
+    }
+
+    private function roleSlug($user): ?string
+    {
+        return DB::table('roles')->where('id', $user->role_id)->value('role');
+    }
+
+    private function paslonSuffix(int $paslonId): string
+    {
+        $nomorUrut = (int) (DB::table('paslons')->where('id', $paslonId)->value('nomor_urut') ?? 0);
+        return $nomorUrut ? str_pad((string)$nomorUrut, 2, '0', STR_PAD_LEFT) : (string)$paslonId;
     }
 
     public function index(Request $request)
@@ -82,17 +94,38 @@ class CoordinatorController extends Controller
             $keywordAlnum = preg_replace('/[^a-z0-9]/', '', $keyword);
 
             $wordToDigit = [
-                'nol' => 0, 'zero' => 0,
-                'satu' => 1, 'one' => 1, 'pertama' => 1,
-                'dua' => 2, 'two' => 2, 'kedua' => 2,
-                'tiga' => 3, 'three' => 3, 'ketiga' => 3,
-                'empat' => 4, 'four' => 4, 'keempat' => 4,
-                'lima' => 5, 'five' => 5, 'kelima' => 5,
-                'enam' => 6, 'six' => 6, 'keenam' => 6,
-                'tujuh' => 7, 'seven' => 7, 'ketujuh' => 7,
-                'delapan' => 8, 'eight' => 8, 'kedelapan' => 8,
-                'sembilan' => 9, 'nine' => 9, 'kesembilan' => 9,
-                'sepuluh' => 10, 'ten' => 10, 'kesepuluh' => 10,
+                'nol' => 0,
+                'zero' => 0,
+                'satu' => 1,
+                'one' => 1,
+                'pertama' => 1,
+                'dua' => 2,
+                'two' => 2,
+                'kedua' => 2,
+                'tiga' => 3,
+                'three' => 3,
+                'ketiga' => 3,
+                'empat' => 4,
+                'four' => 4,
+                'keempat' => 4,
+                'lima' => 5,
+                'five' => 5,
+                'kelima' => 5,
+                'enam' => 6,
+                'six' => 6,
+                'keenam' => 6,
+                'tujuh' => 7,
+                'seven' => 7,
+                'ketujuh' => 7,
+                'delapan' => 8,
+                'eight' => 8,
+                'kedelapan' => 8,
+                'sembilan' => 9,
+                'nine' => 9,
+                'kesembilan' => 9,
+                'sepuluh' => 10,
+                'ten' => 10,
+                'kesepuluh' => 10,
             ];
 
             $detectedNomorUrut = null;
@@ -119,22 +152,22 @@ class CoordinatorController extends Controller
 
                 $q->orWhereHas('province', function ($qq) use ($keyword, $keywordNoSpace) {
                     $qq->where('province', 'like', "%{$keyword}%")
-                    ->orWhereRaw("REPLACE(LOWER(province), ' ', '') LIKE ?", ["%{$keywordNoSpace}%"]);
+                        ->orWhereRaw("REPLACE(LOWER(province), ' ', '') LIKE ?", ["%{$keywordNoSpace}%"]);
                 });
 
                 $q->orWhereHas('city', function ($qq) use ($keyword, $keywordNoSpace) {
                     $qq->where('city', 'like', "%{$keyword}%")
-                    ->orWhereRaw("REPLACE(LOWER(city), ' ', '') LIKE ?", ["%{$keywordNoSpace}%"]);
+                        ->orWhereRaw("REPLACE(LOWER(city), ' ', '') LIKE ?", ["%{$keywordNoSpace}%"]);
                 });
 
                 $q->orWhereHas('district', function ($qq) use ($keyword, $keywordNoSpace) {
                     $qq->where('district', 'like', "%{$keyword}%")
-                    ->orWhereRaw("REPLACE(LOWER(district), ' ', '') LIKE ?", ["%{$keywordNoSpace}%"]);
+                        ->orWhereRaw("REPLACE(LOWER(district), ' ', '') LIKE ?", ["%{$keywordNoSpace}%"]);
                 });
 
                 $q->orWhereHas('village', function ($qq) use ($keyword, $keywordNoSpace) {
                     $qq->where('village', 'like', "%{$keyword}%")
-                    ->orWhereRaw("REPLACE(LOWER(village), ' ', '') LIKE ?", ["%{$keywordNoSpace}%"]);
+                        ->orWhereRaw("REPLACE(LOWER(village), ' ', '') LIKE ?", ["%{$keywordNoSpace}%"]);
                 });
 
                 if ($detectedNomorUrut !== null) {
@@ -145,9 +178,9 @@ class CoordinatorController extends Controller
 
                 $q->orWhereHas('paslon', function ($qq) use ($keyword, $keywordNoSpace) {
                     $qq->where('cagub', 'like', "%{$keyword}%")
-                    ->orWhere('cawagub', 'like', "%{$keyword}%")
-                    ->orWhereRaw("REPLACE(LOWER(cagub), ' ', '') LIKE ?", ["%{$keywordNoSpace}%"])
-                    ->orWhereRaw("REPLACE(LOWER(cawagub), ' ', '') LIKE ?", ["%{$keywordNoSpace}%"]);
+                        ->orWhere('cawagub', 'like', "%{$keyword}%")
+                        ->orWhereRaw("REPLACE(LOWER(cagub), ' ', '') LIKE ?", ["%{$keywordNoSpace}%"])
+                        ->orWhereRaw("REPLACE(LOWER(cawagub), ' ', '') LIKE ?", ["%{$keywordNoSpace}%"]);
                 });
             });
         }
@@ -233,9 +266,7 @@ class CoordinatorController extends Controller
                 }
             ],
             'alamat'        => 'required|string|max:255',
-
             'paslon_id'     => 'required|exists:paslons,id',
-
             'province_code' => 'required|exists:provinces,province_code',
             'city_code'     => 'required|exists:cities,city_code',
             'district_code' => 'required|exists:districts,district_code',
@@ -324,7 +355,7 @@ class CoordinatorController extends Controller
 
             return [
                 'blocked'    => false,
-                'koordinator'=> $koordinator,
+                'koordinator' => $koordinator,
                 'email'      => $email,
                 'password'   => $passwordPlain,
             ];
@@ -432,7 +463,15 @@ class CoordinatorController extends Controller
         $result = DB::transaction(function () use ($request, $koordinator) {
 
             $oldData = $koordinator->only([
-                'nama','nik','no_hp','alamat','province_code','city_code','district_code','village_code','paslon_id'
+                'nama',
+                'nik',
+                'no_hp',
+                'alamat',
+                'province_code',
+                'city_code',
+                'district_code',
+                'village_code',
+                'paslon_id'
             ]);
 
             $oldVillage = $koordinator->village_code;
@@ -555,7 +594,7 @@ class CoordinatorController extends Controller
 
     public function destroy($id)
     {
-        $koordinator = CoordinatorVisit::with(['village','district','city','user'])
+        $koordinator = CoordinatorVisit::with(['village', 'district', 'city', 'user'])
             ->withCount('relawans')
             ->find($id);
 
@@ -596,48 +635,77 @@ class CoordinatorController extends Controller
         ]);
     }
 
-    public function exportAll(Request $request)
+    public function export(Request $request)
     {
         $user = Auth::user();
-
-        if (!$user) {
-            return response()->json(['message' => 'Unauthorized'], 401);
-        }
+        if (!$user) return response()->json(['message' => 'Unauthorized'], 401);
 
         $inputPassword = $request->input('password');
         if (!$inputPassword || !Hash::check($inputPassword, $user->password)) {
             return response()->json(['message' => 'Password salah'], 403);
         }
 
-        ActivityLogger::log([
-            'action' => 'EXPORT',
-            'target_type' => 'koordinator',
-        ]);
+        $roleSlug = $this->roleSlug($user);
 
-        return Excel::download(
-            new KoordinatorExport,
-            'data-koordinator.xlsx'
-        );
+        if ($roleSlug !== 'admin_paslon') {
+            return response()->json([
+                'status' => false,
+                'message' => 'Hanya admin paslon yang dapat export koordinator kunjungan'
+            ], 403);
+        }
+
+        $adminPaslon = AdminPaslon::where('user_id', $user->id)->whereNull('deleted_at')->first();
+        $paslonId = (int) ($adminPaslon?->paslon_id ?? 0);
+        if (!$paslonId) {
+            return response()->json(['status' => false, 'message' => 'Paslon tidak ditemukan'], 403);
+        }
+
+        $suffix = $this->paslonSuffix($paslonId);
+        $filename = "KOORDINATOR_KUNJUNGAN_{$suffix}.xlsx";
+
+        $response = Excel::download(new KoordinatorKunjunganExport($paslonId, 'admin_paslon', $suffix), $filename);
+        $response->headers->set('Cache-Control', 'no-store, no-cache');
+        $response->headers->set('Access-Control-Expose-Headers', 'Content-Disposition');
+        return $response;
     }
-
 
     public function import(Request $request)
     {
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Unauthorized',
+            ], 401);
+        }
+
         $request->validate([
-            'file' => 'required|file|mimes:xls,xlsx'
+            'file' => 'required|file|mimes:xls,xlsx,csv',
         ]);
 
-        $import = new KoordinatorImport;
+        $adminPaslon = AdminPaslon::query()
+            ->where('user_id', $user->id)
+            ->whereNull('deleted_at')
+            ->first();
+
+        if (!$adminPaslon || !(int)$adminPaslon->paslon_id) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Admin paslon tidak valid / tidak punya paslon.',
+            ], 403);
+        }
+
+        $import = new KoordinatorKunjunganImport((int) $adminPaslon->paslon_id);
 
         try {
             Excel::import($import, $request->file('file'));
 
             return response()->json([
                 'status' => true,
-                'message' => 'Import selesai',
+                'message' => 'Import koordinator kunjungan selesai',
                 'data' => [
-                    'successCount' => $import->successCount,
-                    'failed_rows'=> $import->failedRows,
+                    'successCount'     => $import->successCount,
+                    'failed_rows'      => $import->failedRows,
                     'created_accounts' => $import->createdAccounts,
                 ]
             ]);
@@ -669,7 +737,7 @@ class CoordinatorController extends Controller
 
         $koordinator = CoordinatorVisit::withTrashed()
             ->with([
-                'user' => fn ($q) => $q->withTrashed(),
+                'user' => fn($q) => $q->withTrashed(),
                 'province:province_code,province',
                 'city:city_code,city',
                 'district:district_code,district',
@@ -752,7 +820,7 @@ class CoordinatorController extends Controller
         }
 
         $koordinator = CoordinatorVisit::withTrashed()
-            ->with(['user' => fn ($q) => $q->withTrashed()])
+            ->with(['user' => fn($q) => $q->withTrashed()])
             ->where('nik', $request->nik)
             ->first();
 
@@ -853,7 +921,7 @@ class CoordinatorController extends Controller
 
             return [
                 'blocked' => false,
-                'koordinator' => $koordinator->fresh(['user','province','city','district','village']),
+                'koordinator' => $koordinator->fresh(['user', 'province', 'city', 'district', 'village']),
                 'email' => $newEmail,
                 'password' => $newPasswordPlain,
             ];
