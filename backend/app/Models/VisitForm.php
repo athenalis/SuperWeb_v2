@@ -11,6 +11,7 @@ class VisitForm extends Model
     protected $fillable = [
         'task_id',
         'relawan_id',
+        'paslon_id',
         'campaign_id',
         'latitude',
         'longitude',
@@ -74,5 +75,9 @@ class VisitForm extends Model
     public function pekerjaan()
     {
         return $this->belongsTo(Pekerjaan::class, 'pekerjaan_id');
+    }
+
+    public function paslon() {
+        return $this->belongsTo(Paslon::class, 'paslon_id');
     }
 }

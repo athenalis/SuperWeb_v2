@@ -228,7 +228,7 @@ export default function Profile() {
                 </label>
                 <div className="flex items-center gap-2 border border-slate-200 rounded-lg px-4 py-3 bg-slate-50">
                   <Icon icon="mdi:lock-outline" className="text-slate-400" width="20" />
-                  <span className="flex-1 text-slate-800 font-medium font-mono">
+                  <span className="flex-1 text-slate-800 font-medium">
                     {showPassword ? storedPassword : "••••••••"}
                   </span>
                   <button

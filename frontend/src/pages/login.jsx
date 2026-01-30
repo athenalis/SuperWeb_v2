@@ -42,7 +42,8 @@ export default function Login() {
 
       const role = data.user.role;
       if (role === "admin_paslon") navigate("/dashboard");
-      else if (role === "kunjungan_koordinator") navigate("/relawan");
+      else if (role === "kunjungan_koordinator") navigate("/relawan/kunjungan");
+      else if (role === "apk_koordinator") navigate("/relawan/apk");
       else if (role === "relawan") navigate("/kunjungan");
       else if (role === "superadmin") navigate("/superadmin");
       else navigate("/dashboard"); // default

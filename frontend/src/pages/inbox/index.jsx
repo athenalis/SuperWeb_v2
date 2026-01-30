@@ -415,6 +415,10 @@ export default function InboxIndex() {
                           badgeClass = 'bg-green-50 text-green-700 border-green-200';
                           iconName = 'mdi:plus-circle';
                           label = 'Kunjungan Baru';
+                        } else if (type === 'visit_needs_revision') {
+                          badgeClass = 'bg-rose-50 text-rose-700 border-rose-200';
+                          iconName = 'mdi:alert-circle';
+                          label = 'Perlu Revisi';
                         } else if (type === 'visit_deleted') {
                           badgeClass = 'bg-red-50 text-red-700 border-red-200';
                           iconName = 'mdi:trash-can';

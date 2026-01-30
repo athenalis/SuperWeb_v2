@@ -10,6 +10,7 @@ class KepuasanAnswer extends Model
 
     protected $fillable = [
         'kunjungan_id',
+        'paslon_id',
         'tau_paslon',
         'tau_informasi',
         'tau_visi_misi',

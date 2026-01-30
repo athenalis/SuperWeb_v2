@@ -216,7 +216,7 @@ onSuccess: (res) => {
     );
   }
 
-  navigate("/koordinator"); // hanya ini
+  navigate("/koordinator/kunjungan"); // hanya ini
 
   },
   onError: (err) => {
@@ -248,7 +248,7 @@ onSuccess: (res) => {
       { duration: 6000, style: { whiteSpace: "pre-line" } }
     );
 
-    navigate("/koordinator");
+    navigate("/koordinator/kunjungan");
     return;
   }
   mutation.mutate();

@@ -34,7 +34,7 @@ const quickMenus = [
     title: "Data Koordinator",
     desc: "Kelola data koordinator",
     icon: "solar:user-id-bold",
-    path: "/koordinator",
+    path: "/koordinator/kunjungan",
     gradient: "from-blue-500 to-blue-600",
   },
   {
@@ -48,7 +48,7 @@ const quickMenus = [
     title: "Konten",
     desc: "Kelola Jadwal Konten",
     icon: "uil:schedule",
-    path: "/content",
+    path: "/konten",
     gradient: "from-purple-500 to-purple-600",
   },
   {

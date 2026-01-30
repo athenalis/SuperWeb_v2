@@ -14,7 +14,10 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
+use App\Notifications\KunjunganVerified;
 use App\Notifications\VisitSubmitted;
 use App\Notifications\VisitUpdated;
 use Exception;
@@ -22,12 +25,92 @@ use Exception;
 class KunjunganController extends Controller
 {
     /**
+     * ============================
+     * ROLE & ACCESS HELPERS (NEW)
+     * ============================
+     * Role yang valid sekarang:
+     * - relawan
+     * - kunjungan_koordinator
+     * - apk_koordinator
+     * - admin_paslon
+     */
+
+    private function isAdminPaslon($user): bool
+    {
+        return $user && (int)$user->role_id === 2;
+    }
+
+    private function isKunjunganKoordinator($user): bool
+    {
+        return $user && (int)$user->role_id === 4;
+    }
+
+    /**
+     * Guard: relawan harus punya is_kunjungan=1 untuk akses fitur kunjungan
+     * Double job (is_kunjungan=1 & is_apk=1) tetap boleh.
+     */
+    private function ensureRelawanCanKunjungan($user)
+    {
+        if (!$user) return response()->json(['success'=>false,'message'=>'Unauthorized'], 401);
+
+        if ((int)$user->role_id !== 6) return null; // non-relawan skip
+
+        $relawan = $user->relawan;
+        if (!$relawan) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun relawan tidak valid (relawan record tidak ditemukan).'
+            ], 403);
+        }
+
+        if ((int)($relawan->is_kunjungan ?? 0) !== 1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Anda tidak memiliki akses untuk melakukan kunjungan.'
+            ], 403);
+        }
+
+        return null;
+    }
+
+    /**
+     * Guard: fitur kunjungan hanya boleh diakses oleh:
+     * - admin_paslon
+     * - kunjungan_koordinator
+     * - relawan dengan is_kunjungan=1
+     * Role lain (apk_koordinator) ditolak.
+     */
+    private function ensureCanAccessKunjunganFeature($user)
+    {
+        if (!$user) return response()->json(['success'=>false,'message'=>'Unauthorized'], 401);
+
+        if ($this->isAdminPaslon($user) || $this->isKunjunganKoordinator($user)) return null;
+
+        if ((int)$user->role_id === 6) {
+            return $this->ensureRelawanCanKunjungan($user);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Anda tidak memiliki akses fitur kunjungan.'
+        ], 403);
+    }
+
+    /**
      * CREATE KUNJUNGAN (STEP 1)
      * Alamat didapat dari reverse geocoding koordinat GPS
      */
     public function store(Request $request)
     {
         try {
+            /** @var \App\Models\User|null $user */
+            $user = Auth::user();
+
+            // [NEW] akses fitur kunjungan hanya untuk relawan is_kunjungan / kunjungan_koordinator / admin_paslon
+            if ($resp = $this->ensureCanAccessKunjunganFeature($user)) {
+                return $resp;
+            }
+
             $rules = [
                 'nama' => ['required', 'string', 'max:255', 'regex:/^[a-zA-Z\s\.\`\']+$/'],
                 'nik' => [
@@ -92,7 +175,6 @@ class KunjunganController extends Controller
                 $fotoPath = null;
 
                 if ($file && $file->isValid()) {
-                    // Simpan foto KTP dengan nama unik
                     $ext = $file->getClientOriginalExtension();
 
                     $fileName = 'ktp_' . $request->nik . '_' . time() . '.' . $ext;
@@ -102,14 +184,10 @@ class KunjunganController extends Controller
                     if (!$stored) {
                         throw new Exception('Gagal menyimpan foto KTP');
                     }
-                } elseif ($request->has('foto_ktp') && !$request->file('foto_ktp')) {
-                    // If foto_ktp is required but not provided, this should be caught by validator.
-                    // If it's nullable and not provided, fotoPath remains null.
                 }
 
-
-                $user = auth()->user();
-                $relawan = $user->relawan;
+                /** @var \App\Models\Relawan|null $relawan */
+                $relawan = $user ? $user->relawan : null;
 
                 $relawan_id = null;
                 $task_id = null;
@@ -117,7 +195,7 @@ class KunjunganController extends Controller
 
                 if ($relawan) {
                     $relawan_id = $relawan->id;
-                    // Coba cari tugas yang sedang berjalan untuk relawan ini
+
                     $activeTask = Task::where('relawan_id', $relawan_id)
                         ->where('status', '!=', 'completed')
                         ->latest()
@@ -127,7 +205,6 @@ class KunjunganController extends Controller
                         $task_id = $activeTask->id;
                         $campaign_id = $activeTask->campaign_id;
                     } else {
-                        // Fallback: cari campaign dari campaign_relawans
                         $campaignRelawan = \App\Models\CampaignRelawan::where('relawan_id', $relawan_id)->first();
                         if ($campaignRelawan) {
                             $campaign_id = $campaignRelawan->campaign_id;
@@ -137,10 +214,13 @@ class KunjunganController extends Controller
 
                 $umur = $request->tanggal ? \Carbon\Carbon::parse($request->tanggal)->age : null;
 
-                // Simpan data kunjungan
                 $kunjungan = VisitForm::create([
                     'task_id' => $task_id,
                     'relawan_id' => $relawan_id,
+
+                    // [NEW] paslon_id mengikuti relawan yang melakukan kunjungan
+                    'paslon_id' => $relawan ? ($relawan->paslon_id ?? null) : null,
+
                     'campaign_id' => $campaign_id,
                     'nama' => $request->nama,
                     'nik' => $request->nik,
@@ -156,7 +236,7 @@ class KunjunganController extends Controller
                     'offline_id' => $request->offline_id ?? null,
                     'status' => $request->has('is_draft') ? 'draft' : 'pending',
                     'status_verifikasi' => 'pending',
-                    'created_by' => $user->id,
+                    'created_by' => $user ? $user->id : null,
                 ]);
 
                 // Otomatis buat record FamilyForm
@@ -171,7 +251,7 @@ class KunjunganController extends Controller
                 Log::info('Kunjungan created successfully', [
                     'id' => $kunjungan->id,
                     'nik' => $kunjungan->nik,
-                    'user_id' => auth()->id(),
+                    'user_id' => Auth::id(),
                     'gps' => ['lat' => $request->latitude, 'lon' => $request->longitude]
                 ]);
 
@@ -183,7 +263,6 @@ class KunjunganController extends Controller
             } catch (Exception $e) {
                 DB::rollBack();
 
-                // Hapus foto jika ada error
                 if (isset($fotoPath) && Storage::disk('public')->exists($fotoPath)) {
                     Storage::disk('public')->delete($fotoPath);
                 }
@@ -191,7 +270,7 @@ class KunjunganController extends Controller
                 Log::error('DB_DEBUG_TRACE Create kunjungan failed', [
                     'error' => $e->getMessage(),
                     'trace' => $e->getTraceAsString(),
-                    'user_id' => auth()->id(),
+                    'user_id' => Auth::id(),
                     'data' => $request->except('foto_ktp')
                 ]);
 
@@ -222,6 +301,13 @@ class KunjunganController extends Controller
     {
         Log::info('tambahAnggota called', ['kunjungan_id' => $kunjungan_id, 'data' => $request->except('foto_ktp')]);
         try {
+            /** @var \App\Models\User|null $user */
+            $user = Auth::user();
+
+            if ($resp = $this->ensureCanAccessKunjunganFeature($user)) {
+                return $resp;
+            }
+
             $kunjungan = VisitForm::find($kunjungan_id);
 
             if (!$kunjungan) {
@@ -232,7 +318,6 @@ class KunjunganController extends Controller
             }
 
             if ($kunjungan->status === 'completed') {
-                // Allow editing even if already completed
                 Log::info('Adding member to already completed visit', ['kunjungan_id' => $kunjungan_id]);
             }
 
@@ -352,9 +437,18 @@ class KunjunganController extends Controller
     {
         DB::beginTransaction();
         try {
-            $kunjungan = VisitForm::with(['familyForm.members', 'relawan.koordinator.user'])->find($kunjungan_id);
+            /** @var \App\Models\User|null $user */
+            $user = Auth::user();
+
+            if ($resp = $this->ensureCanAccessKunjunganFeature($user)) {
+                DB::rollBack();
+                return $resp;
+            }
+
+            $kunjungan = VisitForm::with(['familyForm.members', 'relawan.koordinator.user', 'paslon'])->find($kunjungan_id);
 
             if (!$kunjungan) {
+                DB::rollBack();
                 return response()->json([
                     'success' => false,
                     'message' => 'Data kunjungan tidak ditemukan'
@@ -364,7 +458,7 @@ class KunjunganController extends Controller
             $updateData = [
                 'status' => 'pending',
                 'status_verifikasi' => 'pending',
-                'completed_by' => auth()->id(),
+                'completed_by' => Auth::id(),
             ];
 
             if (!$kunjungan->completed_at) {
@@ -381,21 +475,26 @@ class KunjunganController extends Controller
                 'harapan' => 'nullable|string',
             ]);
 
-            // Save survey answers
+            $payload = $request->only([
+                'tau_paslon',
+                'tau_informasi',
+                'tau_visi_misi',
+                'tau_program_kerja',
+                'tau_rekam_jejak',
+                'pernah_dikunjungi',
+                'percaya',
+                'harapan',
+                'pertimbangan',
+                'ingin_memilih'
+            ]);
+
+            // [NEW] paslon_id ikut disimpan agar survey dinamis sesuai paslon relawan
+            $payload['paslon_id'] = $kunjungan->paslon_id
+                ?? ($kunjungan->relawan ? ($kunjungan->relawan->paslon_id ?? null) : null);
+
             $kunjungan->kepuasan()->updateOrCreate(
                 ['kunjungan_id' => $kunjungan->id],
-                $request->only([
-                    'tau_paslon',
-                    'tau_informasi',
-                    'tau_visi_misi',
-                    'tau_program_kerja',
-                    'tau_rekam_jejak',
-                    'pernah_dikunjungi',
-                    'percaya',
-                    'harapan',
-                    'pertimbangan',
-                    'ingin_memilih'
-                ])
+                $payload
             );
 
             // Trigger Notification to Coordinator
@@ -403,39 +502,13 @@ class KunjunganController extends Controller
                 if ($kunjungan->relawan && $kunjungan->relawan->koordinator && $kunjungan->relawan->koordinator->user) {
                     $coordinatorUser = $kunjungan->relawan->koordinator->user;
 
-                    // If already completed before, it's a revision/update -> Send VisitUpdated
-                    // If just completed now (wasCompleted is false), it's new -> Send VisitSubmitted
-                    // Note: We check if completed_at was set BEFORE this update.
-                    // But we just updated it above. So we should have captured state before.
-                    // Let's refactor slightly to be safe, or assume if verified_by was previously set/rejected?
-                    // Actually, let's use the fact that we just set completed_at.
-                    // Better approach: Check if it WAS rejected before setting status to pending in line 355.
-                    // But we already updated it.
-
-                    // Alternative: VisitUpdated is already used in update() and updateAnggota().
-                    // Maybe we should just stick to that?
-                    // But selesaikanKunjungan is the final step.
-
-                    // Let's check logic:
-                    // new VisitUpdated($kunjungan, auth()->user())
-                    // new VisitSubmitted($kunjungan, $kunjungan->relawan)
-
-                    // Logic: If it was previously rejected, it's a revision.
-                    // But we reset status to pending.
-                    // Effectively: We need to know if this is a "Create" or "Edit".
-
-                    // Hack: Check if created_at is significantly different from now? No.
-                    // Check if 'verified_at' or 'komentar_verifikasi' exists?
-                    // If `komentar_verifikasi` is not null, it was likely rejected/revised.
-
                     if ($kunjungan->komentar_verifikasi) {
-                        $coordinatorUser->notify(new \App\Notifications\VisitUpdated($kunjungan, auth()->user()));
+                        $coordinatorUser->notify(new \App\Notifications\VisitUpdated($kunjungan, $user));
                     } else {
                         $coordinatorUser->notify(new VisitSubmitted($kunjungan, $kunjungan->relawan));
                     }
                 }
             } catch (\Exception $e) {
-                // Log and ignore notification error so it doesn't rollback transaction
                 Log::error('Failed to send VisitSubmitted notification', ['error' => $e->getMessage()]);
             }
 
@@ -444,8 +517,8 @@ class KunjunganController extends Controller
             Log::info('Kunjungan completed successfully', [
                 'id' => $kunjungan_id,
                 'score' => $request->score,
-                'jumlah_anggota' => $kunjungan->familyForm->members()->count(),
-                'completed_by' => auth()->id()
+                'jumlah_anggota' => $kunjungan->familyForm ? $kunjungan->familyForm->members()->count() : 0,
+                'completed_by' => Auth::id()
             ]);
 
             return response()->json([
@@ -476,7 +549,21 @@ class KunjunganController extends Controller
     public function show($kunjungan_id)
     {
         try {
-            $kunjungan = VisitForm::with(['familyForm.members', 'relawan', 'campaign', 'task', 'kepuasan'])->find($kunjungan_id);
+            /** @var \App\Models\User|null $user */
+            $user = Auth::user();
+
+            if ($resp = $this->ensureCanAccessKunjunganFeature($user)) {
+                return $resp;
+            }
+
+            $kunjungan = VisitForm::with([
+                'familyForm.members',
+                'relawan',
+                'campaign',
+                'task',
+                'kepuasan',
+                'paslon',
+            ])->find($kunjungan_id);
 
             if (!$kunjungan) {
                 return response()->json([
@@ -509,6 +596,13 @@ class KunjunganController extends Controller
     public function index(Request $request)
     {
         try {
+            /** @var \App\Models\User|null $user */
+            $user = Auth::user();
+
+            if ($resp = $this->ensureCanAccessKunjunganFeature($user)) {
+                return $resp;
+            }
+
             $query = VisitForm::with([
                 'relawan:id,nama',
                 'familyForm' => function ($q) {
@@ -516,65 +610,52 @@ class KunjunganController extends Controller
                 }
             ]);
 
-            $user = auth()->user();
-
             // Strict Role-Based Scoping
-            if ($user->role === 'relawan') {
-                // Only show data that belongs to this specific relawan
+            if ($user && $user->role === 'relawan') {
                 if ($user->relawan) {
                     $query->where(function ($q) use ($user) {
-                        // Data must have this relawan_id AND be created by this user
                         $q->where('relawan_id', $user->relawan->id)
-                            ->where('created_by', $user->id);
+                          ->where('created_by', $user->id);
                     });
                 } else {
-                    // If no relawan record, only show data created by this user
                     $query->where('created_by', $user->id);
                 }
-            } elseif ($user->role === 'koordinator') {
+            } elseif ($user && $user->role === 'kunjungan_koordinator') {
                 if ($request->has('relawan_id')) {
-                    // Filter by specific relawan under koordinator
                     $relawanId = $request->relawan_id;
                     $targetRelawan = \App\Models\Relawan::find($relawanId);
-                    // Ensure this relawan belongs to koordinator
+
                     if ($targetRelawan && $user->koordinator && $targetRelawan->koordinator_id === $user->koordinator->id) {
                         $query->where('relawan_id', $relawanId);
                     } else {
-                        // Unauthorized filter attempt usually - return empty
                         $query->whereRaw('1 = 0');
                     }
                 } else {
-                    // Default: show all from downstream relawans
                     $koordinator = $user->koordinator;
                     if ($koordinator) {
                         $query->where(function ($subQ) use ($koordinator) {
                             $subQ->whereHas('relawan', function ($rq) use ($koordinator) {
                                 $rq->where('koordinator_id', $koordinator->id);
                             })
-                                // Include manually created by downstream users
-                                ->orWhereIn('created_by', function ($q) use ($koordinator) {
-                                    $q->select('users.id')
-                                        ->from('users')
-                                        ->join('relawans', 'relawans.user_id', '=', 'users.id')
-                                        ->where('relawans.koordinator_id', $koordinator->id);
-                                });
+                            ->orWhereIn('created_by', function ($q) use ($koordinator) {
+                                $q->select('users.id')
+                                  ->from('users')
+                                  ->join('relawans', 'relawans.user_id', '=', 'users.id')
+                                  ->where('relawans.koordinator_id', $koordinator->id);
+                            });
                         });
                     } else {
                         $query->whereRaw('1 = 0');
                     }
                 }
-            } elseif ($user->role === 'admin') {
-                // Admin can see all, but can optionally filter
+            } elseif ($user && $user->role === 'admin_paslon') {
                 if ($request->has('relawan_id')) {
                     $query->where('relawan_id', $request->relawan_id);
                 }
             } else {
-                // Fallback for unknown roles (e.g. saksi, guest, or broken role data)
-                // STRICT: ONLY SHOW DATA CREATED BY SELF
-                $query->where('created_by', $user->id);
+                $query->whereRaw('1 = 0');
             }
 
-            // Filter by status_verifikasi
             if ($request->has('status')) {
                 if ($request->status === 'draft') {
                     $query->where('status', 'draft');
@@ -583,56 +664,46 @@ class KunjunganController extends Controller
                 }
             }
 
-            // Filter by status_verifikasi (alternatif param name)
             if ($request->has('status_verifikasi')) {
                 $query->where('status_verifikasi', $request->status_verifikasi);
             }
 
-            // Search
             if ($request->has('search')) {
                 $search = $request->search;
                 $query->where(function ($q) use ($search) {
                     $q->where('nama', 'like', "%{$search}%")
-                        ->orWhere('nik', 'like', "%{$search}%");
+                      ->orWhere('nik', 'like', "%{$search}%");
                 });
             }
 
             $kunjungan = $query->orderBy('created_at', 'desc')
                 ->paginate($request->per_page ?? 15);
 
-            // Fetch statistics with potential relawan_id filter
-            $relawanId = $request->relawan_id;
-            $statsQuery = VisitForm::query();
-
-            $user = auth()->user();
-            if ($user->role === 'relawan') {
+            // Stats
+            if ($user && $user->role === 'relawan' && $user->relawan) {
                 $baseQuery = VisitForm::where('relawan_id', $user->relawan->id);
                 $total = (clone $baseQuery)->count();
                 $pending = (clone $baseQuery)->where('status_verifikasi', 'pending')->count();
                 $accepted = (clone $baseQuery)->where('status_verifikasi', 'accepted')->count();
                 $rejected = (clone $baseQuery)->where('status_verifikasi', 'rejected')->count();
-            } else {
-                // Statistics for Koordinator/Admin
-                $queryFull = VisitForm::query();
-                // ... logic to include children (copy filtering logic if needed)
-                // For simplicity assuming global count for now, adjust based on index filters
+            } elseif ($user && ($user->role === 'kunjungan_koordinator' || $user->role === 'admin_paslon')) {
                 $total = VisitForm::count();
                 $pending = VisitForm::where('status_verifikasi', 'pending')->count();
                 $accepted = VisitForm::where('status_verifikasi', 'accepted')->count();
                 $rejected = VisitForm::where('status_verifikasi', 'rejected')->count();
+            } else {
+                $total = $pending = $accepted = $rejected = 0;
             }
-
-            $stats = [
-                'total' => $total,
-                'pending' => $pending,
-                'accepted' => $accepted,
-                'rejected' => $rejected,
-            ];
 
             return response()->json([
                 'success' => true,
                 'data' => $kunjungan,
-                'stats' => $stats
+                'stats' => [
+                    'total' => $total,
+                    'pending' => $pending,
+                    'accepted' => $accepted,
+                    'rejected' => $rejected,
+                ]
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
@@ -645,17 +716,21 @@ class KunjunganController extends Controller
     public function update(Request $request, $id)
     {
         try {
+            /** @var \App\Models\User|null $user */
+            $user = Auth::user();
+
+            if ($resp = $this->ensureCanAccessKunjunganFeature($user)) {
+                return $resp;
+            }
+
             $kunjungan = VisitForm::find($id);
 
             if (!$kunjungan) {
                 return response()->json(['success' => false, 'message' => 'Data tidak ditemukan'], 404);
             }
 
-            // [LOGIC TAMBAHAN] Reset status verifikasi jika ditolak, agar bisa diverifikasi ulang
             if ($kunjungan->status_verifikasi === 'rejected') {
                 $kunjungan->status_verifikasi = 'pending';
-                // Kita biarkan verified_by dan verified_at tetap ada sebagai history, atau null-kan?
-                // Lebih baik null-kan untuk menandakan "belum diverifikasi ulang"
                 $kunjungan->verified_by = null;
                 $kunjungan->verified_at = null;
             }
@@ -709,8 +784,6 @@ class KunjunganController extends Controller
 
             $kunjungan->update($data);
 
-            // [CLEANUP] Hapus notifikasi lama terkait kunjungan ini agar tidak "nabun" (menumpuk)
-            // User akan melihat status terbaru saja (Revisi Selesai)
             DB::table('notifications')
                 ->where('data', 'LIKE', '%"visit_id":' . $id . '%')
                 ->orWhere('data', 'LIKE', '%"visit_id": "' . $id . '"%')
@@ -718,20 +791,16 @@ class KunjunganController extends Controller
                 ->orWhere('data', 'LIKE', '%"kunjungan_id":' . $id . '%')
                 ->delete();
 
-            // [NOTIFICATION LOGIC]
             try {
-                $user = auth()->user();
                 $targetUser = null;
 
-                if ($user->role === 'relawan' && $kunjungan->relawan && $kunjungan->relawan->koordinator && $kunjungan->relawan->koordinator->user) {
-                    // Relawan update -> Notify Koordinator
+                if ($user && $user->role === 'relawan' && $kunjungan->relawan && $kunjungan->relawan->koordinator && $kunjungan->relawan->koordinator->user) {
                     $targetUser = $kunjungan->relawan->koordinator->user;
-                } elseif ($user->role === 'koordinator' && $kunjungan->relawan && $kunjungan->relawan->user) {
-                    // Koordinator update -> Notify Relawan (Creator/Owner)
+                } elseif ($user && $user->role === 'kunjungan_koordinator' && $kunjungan->relawan && $kunjungan->relawan->user) {
                     $targetUser = $kunjungan->relawan->user;
                 }
 
-                if ($targetUser && $targetUser->id !== $user->id) {
+                if ($targetUser && $user && $targetUser->id !== $user->id) {
                     $targetUser->notify(new VisitUpdated($kunjungan, $user));
                 }
             } catch (\Exception $e) {
@@ -751,6 +820,13 @@ class KunjunganController extends Controller
     public function destroy($id)
     {
         try {
+            /** @var \App\Models\User|null $user */
+            $user = Auth::user();
+
+            if ($resp = $this->ensureCanAccessKunjunganFeature($user)) {
+                return $resp;
+            }
+
             $kunjungan = VisitForm::find($id);
 
             if (!$kunjungan) {
@@ -760,12 +836,10 @@ class KunjunganController extends Controller
                 ], 404);
             }
 
-            // Hapus foto KTP jika ada
             if ($kunjungan->foto_ktp) {
                 Storage::disk('public')->delete($kunjungan->foto_ktp);
             }
 
-            // Hapus anggota keluarga (otomatis terhapus jika di db pakai cascade, tapi manual lebih aman)
             if ($kunjungan->familyForm) {
                 foreach ($kunjungan->familyForm->members as $member) {
                     if ($member->foto_ktp) {
@@ -775,40 +849,33 @@ class KunjunganController extends Controller
                 $kunjungan->familyForm->delete();
             }
 
-
-            // [LOGIC TAMBAHAN] Hapus notifikasi terkait kunjungan ini
-            // Agar inbox koordinator tidak penuh dengan notifikasi sampah
             try {
-                // Menggunakan LIKE agar lebih robust menangkap format angka maupun string di JSON
-                // Dan menangkap variasi key kujuangan_id atau visit_id
-                $id = $kunjungan->id;
+                $visitId = $kunjungan->id;
                 $deletedCount = DB::table('notifications')
-                    ->where('data', 'LIKE', '%"visit_id":' . $id . '%')
-                    ->orWhere('data', 'LIKE', '%"visit_id": "' . $id . '"%') // With space
-                    ->orWhere('data', 'LIKE', '%"visit_id":"' . $id . '"%')  // String format
-                    ->orWhere('data', 'LIKE', '%"kunjungan_id":' . $id . '%')
-                    ->orWhere('data', 'LIKE', '%"kunjungan_id": "' . $id . '"%') // With space
-                    ->orWhere('data', 'LIKE', '%"kunjungan_id":"' . $id . '"%')  // String format
+                    ->where('data', 'LIKE', '%"visit_id":' . $visitId . '%')
+                    ->orWhere('data', 'LIKE', '%"visit_id": "' . $visitId . '"%')
+                    ->orWhere('data', 'LIKE', '%"visit_id":"' . $visitId . '"%')
+                    ->orWhere('data', 'LIKE', '%"kunjungan_id":' . $visitId . '%')
+                    ->orWhere('data', 'LIKE', '%"kunjungan_id": "' . $visitId . '"%')
+                    ->orWhere('data', 'LIKE', '%"kunjungan_id":"' . $visitId . '"%')
                     ->delete();
 
-                Log::info("Deleted {$deletedCount} notifications for visit {$id} when deleting visit.");
+                Log::info("Deleted {$deletedCount} notifications for visit {$visitId} when deleting visit.");
             } catch (\Exception $e) {
                 Log::error('Gagal menghapus notifikasi terkait', ['error' => $e->getMessage()]);
             }
 
-            // [LOGIC TAMBAHAN] Kirim notifikasi "Kunjungan Dihapus" ke koordinator
-            // Jika yang menghapus adalah Relawan
             try {
-                $userRole = auth()->user()->role;
+                $userRole = $user ? $user->role : null;
                 Log::info("Deleting visit {$kunjungan->id}. User role: {$userRole}");
 
                 if ($userRole === 'relawan') {
                     if ($kunjungan->relawan && $kunjungan->relawan->koordinator && $kunjungan->relawan->koordinator->user) {
                         $coordUser = $kunjungan->relawan->koordinator->user;
                         $coordUser->notify(new \App\Notifications\VisitDeleted(
-                            $kunjungan->nama, // Nama kepala keluarga
-                            $kunjungan->relawan->nama, // Nama relawan
-                            auth()->user()->role
+                            $kunjungan->nama,
+                            $kunjungan->relawan->nama,
+                            $userRole
                         ));
                         Log::info("Sent VisitDeleted notification to Coordinator ID: {$coordUser->id}");
                     } else {
@@ -819,7 +886,6 @@ class KunjunganController extends Controller
                 Log::error('Gagal mengirim notifikasi VisitDeleted', ['error' => $e->getMessage()]);
             }
 
-            // Hapus jawaban kuisioner
             if ($kunjungan->kepuasan) {
                 $kunjungan->kepuasan->delete();
             }
@@ -841,13 +907,18 @@ class KunjunganController extends Controller
     public function updateAnggota(Request $request, $id)
     {
         try {
+            /** @var \App\Models\User|null $user */
+            $user = Auth::user();
+
+            if ($resp = $this->ensureCanAccessKunjunganFeature($user)) {
+                return $resp;
+            }
+
             $anggota = FamilyMember::find($id);
             if (!$anggota) {
                 return response()->json(['success' => false, 'message' => 'Anggota tidak ditemukan'], 404);
             }
 
-            // [LOGIC TAMBAHAN] Reset status verifikasi kunjungan (parent) jika ditolak
-            // Agar bisa diverifikasi ulang oleh koordinator
             $keluargaForm = $anggota->keluargaForm;
             $kunjunganParent = $keluargaForm ? $keluargaForm->kunjungan : null;
 
@@ -903,21 +974,17 @@ class KunjunganController extends Controller
 
             $anggota->update($data);
 
-            // [NOTIFICATION LOGIC]
             try {
                 if ($kunjunganParent) {
-                    $user = auth()->user();
                     $targetUser = null;
 
-                    if ($user->role === 'relawan' && $kunjunganParent->relawan && $kunjunganParent->relawan->koordinator && $kunjunganParent->relawan->koordinator->user) {
-                        // Relawan update -> Notify Koordinator
+                    if ($user && $user->role === 'relawan' && $kunjunganParent->relawan && $kunjunganParent->relawan->koordinator && $kunjunganParent->relawan->koordinator->user) {
                         $targetUser = $kunjunganParent->relawan->koordinator->user;
-                    } elseif ($user->role === 'koordinator' && $kunjunganParent->relawan && $kunjunganParent->relawan->user) {
-                        // Koordinator update -> Notify Relawan (Creator/Owner)
+                    } elseif ($user && $user->role === 'kunjungan_koordinator' && $kunjunganParent->relawan && $kunjunganParent->relawan->user) {
                         $targetUser = $kunjunganParent->relawan->user;
                     }
 
-                    if ($targetUser && $targetUser->id !== $user->id) {
+                    if ($targetUser && $user && $targetUser->id !== $user->id) {
                         $targetUser->notify(new VisitUpdated($kunjunganParent, $user));
                     }
                 }
@@ -938,6 +1005,13 @@ class KunjunganController extends Controller
     public function hapusAnggota($id)
     {
         try {
+            /** @var \App\Models\User|null $user */
+            $user = Auth::user();
+
+            if ($resp = $this->ensureCanAccessKunjunganFeature($user)) {
+                return $resp;
+            }
+
             $anggota = FamilyMember::find($id);
             if (!$anggota) {
                 return response()->json(['success' => false, 'message' => 'Anggota tidak ditemukan'], 404);
@@ -959,16 +1033,22 @@ class KunjunganController extends Controller
     }
 
     /**
-     * VERIFIKASI KUNJUNGAN (KOORDINATOR ONLY)
+     * VERIFIKASI KUNJUNGAN (KUNJUNGAN_KOORDINATOR ONLY)
      * Setuju atau tolak dengan komentar revisi
      */
     public function verifikasi(Request $request, $id)
     {
         try {
+            /** @var \App\Models\User|null $user */
+            $user = Auth::user();
+
+            if (!$this->isKunjunganKoordinator($user) || !$user->koordinator) {
+                return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+            }
+
             $kunjungan = VisitForm::with(['relawan'])->findOrFail($id);
 
-            // Validasi koordinator hanya bisa verifikasi relawan yang dibawahi
-            $koordinator = auth()->user()->koordinator;
+            $koordinator = $user->koordinator;
             if ($koordinator && $kunjungan->relawan) {
                 if ($kunjungan->relawan->koordinator_id !== $koordinator->id) {
                     return response()->json([
@@ -999,7 +1079,6 @@ class KunjunganController extends Controller
             $kunjungan->verified_at = now();
             $kunjungan->save();
 
-            // Kirim notifikasi ke relawan
             if ($kunjungan->relawan && $kunjungan->relawan->user) {
                 if ($request->status === 'accepted') {
                     $kunjungan->relawan->user->notify(new \App\Notifications\KunjunganVerified($kunjungan));
@@ -1030,17 +1109,17 @@ class KunjunganController extends Controller
      */
     public function getNextBatch()
     {
-        $user = auth()->user();
+        /** @var \App\Models\User|null $user */
+        $user = Auth::user();
 
-        if ($user->role !== 'koordinator' || !$user->koordinator) {
+        if (!$user || $user->role !== 'kunjungan_koordinator' || !$user->koordinator) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
         $koordinatorId = $user->koordinator->id;
         $cacheKey = "verifikasi_rr_{$koordinatorId}";
-        $lastRelawanId = \Illuminate\Support\Facades\Cache::get($cacheKey, 0);
+        $lastRelawanId = Cache::get($cacheKey, 0);
 
-        // 1. Try to find next relawan (ID > last_id)
         $nextRelawan = Relawan::where('koordinator_id', $koordinatorId)
             ->where('id', '>', $lastRelawanId)
             ->whereHas('visitForms', function ($q) {
@@ -1056,7 +1135,6 @@ class KunjunganController extends Controller
             ->orderBy('id')
             ->first();
 
-        // 2. Loop back to start if not found
         if (!$nextRelawan) {
             $nextRelawan = Relawan::where('koordinator_id', $koordinatorId)
                 ->whereHas('visitForms', function ($q) {
@@ -1080,18 +1158,19 @@ class KunjunganController extends Controller
             ]);
         }
 
-        // Update Cache
-        \Illuminate\Support\Facades\Cache::put($cacheKey, $nextRelawan->id, now()->addDays(1));
+        Cache::put($cacheKey, $nextRelawan->id, now()->addDays(1));
 
-        // Count pending
         $totalPending = $nextRelawan->visitForms()->where('status_verifikasi', 'pending')->count();
         $batchCount = min(5, $totalPending);
 
-        // Send notification
-        $user->notify(new \App\Notifications\VerificationBatchReady(
-            $nextRelawan,
-            $batchCount
-        ));
+        try {
+            $user->notify(new KunjunganVerified(
+                $nextRelawan,
+                $batchCount
+            ));
+        } catch (\Exception $e) {
+            Log::error('Failed to send VerificationBatchReady notification', ['error' => $e->getMessage()]);
+        }
 
         return response()->json([
             'success' => true,
@@ -1103,19 +1182,26 @@ class KunjunganController extends Controller
             ]
         ]);
     }
+
     /**
      * CHECK NIK AVAILABILITY (Relawan)
      * Limit return data to protect privacy, only validation status.
      */
     public function checkNik(Request $request)
     {
+        /** @var \App\Models\User|null $user */
+        $user = Auth::user();
+
+        if ($resp = $this->ensureCanAccessKunjunganFeature($user)) {
+            return $resp;
+        }
+
         $request->validate([
             'nik' => 'required|digits:16'
         ]);
 
         $nik = $request->nik;
 
-        // Check 1: As Head of Family (kunjungan_forms)
         $existsAsHead = DB::table('kunjungan_forms')->where('nik', $nik)->exists();
         if ($existsAsHead) {
             return response()->json([
@@ -1124,7 +1210,6 @@ class KunjunganController extends Controller
             ]);
         }
 
-        // Check 2: As Family Member (keluarga_members)
         $existsAsMember = DB::table('keluarga_members')->where('nik', $nik)->exists();
         if ($existsAsMember) {
             return response()->json([

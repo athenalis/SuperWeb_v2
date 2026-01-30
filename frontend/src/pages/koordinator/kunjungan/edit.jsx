@@ -98,55 +98,55 @@ export default function EditKoordinator() {
       SUBMIT UPDATE
   ============================= */
 
-const handleSubmit = async (e) => {
-  e.preventDefault();
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
-  const toastId = toast.loading("Menyimpan perubahan...");
+    const toastId = toast.loading("Menyimpan perubahan...");
 
-  try {
-    const res = await api.put(`/koordinator/${id}`, form);
+    try {
+      const res = await api.put(`/koordinator/${id}`, form);
 
-    const akun = res.data?.data?.user;
+      const akun = res.data?.data?.user;
 
-    if (akun) {
-      toast.success(
-        `Data koordinator berhasil diperbarui!\nEmail: ${akun.email}\nPassword: ${akun.password}`,
-        {
+      if (akun) {
+        toast.success(
+          `Data koordinator berhasil diperbarui!\nEmail: ${akun.email}\nPassword: ${akun.password}`,
+          {
+            id: toastId,
+            duration: 5000,
+            style: {
+              whiteSpace: "pre-line",
+              background: "#1e293b",
+              color: "white",
+              padding: "14px",
+              borderRadius: "10px",
+            },
+          }
+        );
+      } else {
+        toast.success("Data koordinator berhasil diperbarui", {
           id: toastId,
-          duration: 5000,
-          style: {
-            whiteSpace: "pre-line",
-            background: "#1e293b",
-            color: "white",
-            padding: "14px",
-            borderRadius: "10px",
-          },
-        }
-      );
-    } else {
-      toast.success("Data koordinator berhasil diperbarui", {
+        });
+      }
+
+      navigate(`/koordinator/kunjungan/${id}`);
+    } catch (err) {
+      console.log(err.response?.data);
+
+      const errors = err.response?.data?.errors;
+
+      if (errors) {
+        // tampilkan error pertama saja (UX lebih bersih)
+        const firstError = Object.values(errors)[0][0];
+        toast.error(firstError, { id: toastId });
+        return;
+      }
+
+      toast.error("Gagal memperbarui data", {
         id: toastId,
       });
     }
-
-    navigate(`/koordinator/${id}`);
-  } catch (err) {
-    console.log(err.response?.data);
-
-    const errors = err.response?.data?.errors;
-
-    if (errors) {
-      // tampilkan error pertama saja (UX lebih bersih)
-      const firstError = Object.values(errors)[0][0];
-      toast.error(firstError, { id: toastId });
-      return;
-    }
-
-    toast.error("Gagal memperbarui data", {
-      id: toastId,
-    });
-  }
-};
+  };
 
 
   if (loading) return <p className="text-center py-10">Loading...</p>;
@@ -161,28 +161,28 @@ const handleSubmit = async (e) => {
 
         {/* Nama */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block mb-3 font-bold">Nama</label>
-          <input
-            name="nama"
-            value={form.nama}
-            onChange={handleChange}
-            className="w-full border rounded-lg px-4 py-2"
-            required
-          />
-        </div>
+          <div>
+            <label className="block mb-3 font-bold">Nama</label>
+            <input
+              name="nama"
+              value={form.nama}
+              onChange={handleChange}
+              className="w-full border rounded-lg px-4 py-2"
+              required
+            />
+          </div>
 
-        {/* NIK */}
-        <div>
-          <label className="block mb-3 font-bold">NIK</label>
-          <input
-            name="nik"
-            value={form.nik}
-            onChange={handleChange}
-            className="w-full border rounded-lg px-4 py-2"
-            required
-          />
-        </div>
+          {/* NIK */}
+          <div>
+            <label className="block mb-3 font-bold">NIK</label>
+            <input
+              name="nik"
+              value={form.nik}
+              onChange={handleChange}
+              className="w-full border rounded-lg px-4 py-2"
+              required
+            />
+          </div>
         </div>
 
         {/* No HP & TPS */}
@@ -312,7 +312,7 @@ const handleSubmit = async (e) => {
 
           <button
             type="button"
-            onClick={() => navigate(`/koordinator/${id}`)}
+            onClick={() => navigate(`/koordinator/kunjungan/${id}`)}
             className="text-gray-500"
           >
             Batal

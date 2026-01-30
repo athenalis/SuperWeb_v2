@@ -67,10 +67,10 @@ export default function Koordinator() {
   const fetchKoordinators = async () => {
     const res = await api.get("/koordinator", {
       params: {
-      city_code: activeFilters.city_code,
-      district_code: activeFilters.district_code,
-      village_code: activeFilters.village_code,
-    },
+        city_code: activeFilters.city_code,
+        district_code: activeFilters.district_code,
+        village_code: activeFilters.village_code,
+      },
     });
     // Handle both paginated and non-paginated
     const result = res.data.data;
@@ -115,7 +115,7 @@ export default function Koordinator() {
 
     const matchNama = (item.nama ?? "").toLowerCase().includes(s);
     const matchNik = String(item.nik ?? "").includes(s);
-      
+
     // Normalisasi TPS (buang angka 0 di depan agar '001' match dengan '1')
     const normalize = (val) => String(val).replace(/^0+/, "");
     const matchTps = normalize(item.tps ?? "") === normalize(s);
@@ -136,10 +136,10 @@ export default function Koordinator() {
   // ================= FILTER ACTION =================
   const applyFilter = () => {
     setActiveFilters({
-    city_code: filters.city_code,
-    district_code: filters.district_code,
-    village_code: filters.village_code,
-  });
+      city_code: filters.city_code,
+      district_code: filters.district_code,
+      village_code: filters.village_code,
+    });
   };
 
   const resetFilter = () => {
@@ -175,57 +175,57 @@ export default function Koordinator() {
 
 
   // ================= EXPORT =================
-const exportAllKoordinators = async () => {
-  if (!exportPassword) {
-    toast.error("Masukkan password terlebih dahulu");
-    return;
-  }
-
-  const toastId = "export-koordinator";
-
-  try {
-    setExporting(true);
-    toast.loading("Menyiapkan file Excel...", { id: toastId });
-
-    const res = await api.post(
-      "/koordinator/export",
-      { password: exportPassword },
-      {
-        responseType: "blob",
-        validateStatus: (status) => status < 500, // ⬅️ INI KUNCI UTAMA
-      }
-    );
-
-    // 🧠 cek apakah ini file excel atau pesan error JSON
-    const contentType = res.headers["content-type"];
-
-    if (contentType?.includes("application/json")) {
-      const text = await res.data.text();
-      const data = JSON.parse(text);
-      throw new Error(data.message || "Export gagal");
+  const exportAllKoordinators = async () => {
+    if (!exportPassword) {
+      toast.error("Masukkan password terlebih dahulu");
+      return;
     }
 
-    // ✅ DOWNLOAD FILE
-    const url = window.URL.createObjectURL(res.data);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", "koordinator_all.xlsx");
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    const toastId = "export-koordinator";
 
-    toast.success("Export berhasil", { id: toastId });
+    try {
+      setExporting(true);
+      toast.loading("Menyiapkan file Excel...", { id: toastId });
 
-    setOpenExportModal(false);
-    setExportPassword("");
-    setShowPassword(false);
+      const res = await api.post(
+        "/koordinator/export",
+        { password: exportPassword },
+        {
+          responseType: "blob",
+          validateStatus: (status) => status < 500, // ⬅️ INI KUNCI UTAMA
+        }
+      );
 
-  } catch (err) {
-    toast.error(err.message || "Gagal export", { id: toastId });
-  } finally {
-    setExporting(false);
-  }
-};
+      // 🧠 cek apakah ini file excel atau pesan error JSON
+      const contentType = res.headers["content-type"];
+
+      if (contentType?.includes("application/json")) {
+        const text = await res.data.text();
+        const data = JSON.parse(text);
+        throw new Error(data.message || "Export gagal");
+      }
+
+      // ✅ DOWNLOAD FILE
+      const url = window.URL.createObjectURL(res.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", "koordinator_all.xlsx");
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      toast.success("Export berhasil", { id: toastId });
+
+      setOpenExportModal(false);
+      setExportPassword("");
+      setShowPassword(false);
+
+    } catch (err) {
+      toast.error(err.message || "Gagal export", { id: toastId });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // ================= IMPORT =================
   const importKoordinator = async () => {
@@ -295,7 +295,7 @@ const exportAllKoordinators = async () => {
 
       {/* ================= HEADER ================= */}
       <div className="bg-white rounded-lg p-7 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <h1 className="text-3xl font-bold text-blue-900">Data Koordinator</h1>
+        <h1 className="text-3xl font-bold text-blue-900">Data Koordinator Kunjungan</h1>
 
         <div className="flex flex-col sm:flex-row gap-3">
           <button
@@ -306,7 +306,7 @@ const exportAllKoordinators = async () => {
           </button>
 
           <button
-            onClick={() => navigate("/koordinator/create")}
+            onClick={() => navigate("/koordinator/kunjungan/create")}
             className="bg-blue-900 text-white px-6 py-3 rounded-lg hover:bg-blue-800"
           >
             Tambah Koordinator +
@@ -314,150 +314,150 @@ const exportAllKoordinators = async () => {
         </div>
       </div>
 
-              {/* ================= FILTER SECTION  ================= */}
-        <div className="bg-white rounded-xl shadow p-6 space-y-6">
-          {/* Header Filter */}
-          <div className="flex items-center gap-3">
-            <Icon icon="mdi:filter-variant" className="text-blue-700" width="28" />
-            <div>
-              <div className="text-lg font-semibold">Filter Data</div>
-              <div className="text-sm text-slate-400">
-                Cari data berdasarkan Nama, NIK, TPS, atau Wilayah
-              </div>
+      {/* ================= FILTER SECTION  ================= */}
+      <div className="bg-white rounded-xl shadow p-6 space-y-6">
+        {/* Header Filter */}
+        <div className="flex items-center gap-3">
+          <Icon icon="mdi:filter-variant" className="text-blue-700" width="28" />
+          <div>
+            <div className="text-lg font-semibold">Filter Data</div>
+            <div className="text-sm text-slate-400">
+              Cari data berdasarkan Nama, NIK, TPS, atau Wilayah
             </div>
           </div>
+        </div>
 
-          {/* Input Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-            {/* SEARCH BOX GABUNGAN (Span 4 cols di desktop) */}
-            <div className="md:col-span-4 relative group">
-              <Icon 
-                icon="mdi:magnify" 
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" 
-                width="24" 
-              />
-              <input
-                className="w-full border border-gray-400 pl-12 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400"
-                placeholder="Cari Nama / NIK / TPS"
-                value={filters.keyword}
-                onChange={(e) => setFilters({ ...filters, keyword: e.target.value })}
-                onKeyDown={(e) => e.key === 'Enter' && applyFilter()}
-              />
-            </div>
-
-            {/* REGION FILTERS (Span 8 cols di desktop) */}
-            <div className="md:col-span-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-              
-              {/* KOTA */}
-              <div className="relative group">
-                <Icon 
-                  icon="mdi:chevron-down" 
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-focus-within:text-blue-600 transition-colors" 
-                  width="22" 
-                />
-                <select
-                  className={`w-full appearance-none border border-gray-400 pl-5 pr-12 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 ${filters.city_code ? "text-slate-800" : "text-slate-400"}`}
-                  value={filters.city_code}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setFilters({ ...filters, city_code: val, district_code: "", village_code: "" });
-                    loadDistricts(val);
-                  }}
-                >
-                  <option value="">Pilih Kota/Kabupaten</option>
-                  {cities.map((c) => (<option key={c.city_code} value={c.city_code}>{c.city}</option>))}
-                </select>
-              </div>
-
-              {/* KECAMATAN */}
-              <div className="relative group">
-                <Icon 
-                  icon="mdi:chevron-down" 
-                  className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${!filters.city_code ? "text-gray-200" : "text-slate-400 group-focus-within:text-blue-600"}`} 
-                  width="22" 
-                />
-                <select
-                  className="w-full appearance-none border border-gray-400 pl-5 pr-12 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 disabled:bg-gray-50 disabled:text-gray-300 disabled:border-gray-200"
-                  value={filters.district_code}
-                  disabled={!filters.city_code}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setFilters({ ...filters, district_code: val, village_code: "" });
-                    loadVillages(val);
-                  }}
-                >
-                  <option value="">Pilih Kecamatan</option>
-                  {districts.map((d) => (<option key={d.district_code} value={d.district_code}>{d.district}</option>))}
-                </select>
-              </div>
-
-              {/* KELURAHAN */}
-              <div className="relative group">
-                <Icon 
-                  icon="mdi:chevron-down" 
-                  className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${!filters.district_code ? "text-gray-200" : "text-slate-400 group-focus-within:text-blue-600"}`} 
-                  width="22" 
-                />
-                <select
-                  className="w-full appearance-none border border-gray-400 pl-5 pr-12 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 disabled:bg-gray-50 disabled:text-gray-300 disabled:border-gray-200"
-                  value={filters.village_code}
-                  disabled={!filters.district_code}
-                  onChange={(e) => setFilters({ ...filters, village_code: e.target.value })}
-                >
-                  <option value="">Pilih Kelurahan</option>
-                  {villages.map((v) => (<option key={v.village_code} value={v.village_code}>{v.village}</option>))}
-                </select>
-              </div>
-            </div>
+        {/* Input Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+          {/* SEARCH BOX GABUNGAN (Span 4 cols di desktop) */}
+          <div className="md:col-span-4 relative group">
+            <Icon
+              icon="mdi:magnify"
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors"
+              width="24"
+            />
+            <input
+              className="w-full border border-gray-400 pl-12 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400"
+              placeholder="Cari Nama / NIK / TPS"
+              value={filters.keyword}
+              onChange={(e) => setFilters({ ...filters, keyword: e.target.value })}
+              onKeyDown={(e) => e.key === 'Enter' && applyFilter()}
+            />
           </div>
 
-          {/* BUTTON ACTION */}
-          <div className="flex justify-end gap-3">
-            <button 
-              className="bg-blue-900 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-800 transition" 
-              onClick={applyFilter}
-            >
-              <Icon icon="mdi:filter-variant" width={20} />
-            </button>
+          {/* REGION FILTERS (Span 8 cols di desktop) */}
+          <div className="md:col-span-8 grid grid-cols-1 md:grid-cols-3 gap-4">
 
-            <button 
-              onClick={resetFilter} 
-              className="bg-blue-100 text-blue-800 px-4 py-2 rounded-lg hover:bg-blue-200 transition border border-blue-200"
-            >
-              <Icon icon="mdi:refresh" width={20} />
-            </button>
+            {/* KOTA */}
+            <div className="relative group">
+              <Icon
+                icon="mdi:chevron-down"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-focus-within:text-blue-600 transition-colors"
+                width="22"
+              />
+              <select
+                className={`w-full appearance-none border border-gray-400 pl-5 pr-12 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 ${filters.city_code ? "text-slate-800" : "text-slate-400"}`}
+                value={filters.city_code}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFilters({ ...filters, city_code: val, district_code: "", village_code: "" });
+                  loadDistricts(val);
+                }}
+              >
+                <option value="">Pilih Kota/Kabupaten</option>
+                {cities.map((c) => (<option key={c.city_code} value={c.city_code}>{c.city}</option>))}
+              </select>
+            </div>
 
-            <div className="flex-1 md:flex-none" /> {/* Spacer */}
-            
-            <button 
-              onClick={() => setOpenExportModal(true)} 
-              disabled={exporting}
-              className={`bg-blue-100 text-blue-800 px-6 py-2.5 rounded-lg border border-blue-200 font-bold transition flex items-center gap-2  
+            {/* KECAMATAN */}
+            <div className="relative group">
+              <Icon
+                icon="mdi:chevron-down"
+                className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${!filters.city_code ? "text-gray-200" : "text-slate-400 group-focus-within:text-blue-600"}`}
+                width="22"
+              />
+              <select
+                className="w-full appearance-none border border-gray-400 pl-5 pr-12 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 disabled:bg-gray-50 disabled:text-gray-300 disabled:border-gray-200"
+                value={filters.district_code}
+                disabled={!filters.city_code}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFilters({ ...filters, district_code: val, village_code: "" });
+                  loadVillages(val);
+                }}
+              >
+                <option value="">Pilih Kecamatan</option>
+                {districts.map((d) => (<option key={d.district_code} value={d.district_code}>{d.district}</option>))}
+              </select>
+            </div>
+
+            {/* KELURAHAN */}
+            <div className="relative group">
+              <Icon
+                icon="mdi:chevron-down"
+                className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${!filters.district_code ? "text-gray-200" : "text-slate-400 group-focus-within:text-blue-600"}`}
+                width="22"
+              />
+              <select
+                className="w-full appearance-none border border-gray-400 pl-5 pr-12 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 disabled:bg-gray-50 disabled:text-gray-300 disabled:border-gray-200"
+                value={filters.village_code}
+                disabled={!filters.district_code}
+                onChange={(e) => setFilters({ ...filters, village_code: e.target.value })}
+              >
+                <option value="">Pilih Kelurahan</option>
+                {villages.map((v) => (<option key={v.village_code} value={v.village_code}>{v.village}</option>))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* BUTTON ACTION */}
+        <div className="flex justify-end gap-3">
+          <button
+            className="bg-blue-900 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-800 transition"
+            onClick={applyFilter}
+          >
+            <Icon icon="mdi:filter-variant" width={20} />
+          </button>
+
+          <button
+            onClick={resetFilter}
+            className="bg-blue-100 text-blue-800 px-4 py-2 rounded-lg hover:bg-blue-200 transition border border-blue-200"
+          >
+            <Icon icon="mdi:refresh" width={20} />
+          </button>
+
+          <div className="flex-1 md:flex-none" /> {/* Spacer */}
+
+          <button
+            onClick={() => setOpenExportModal(true)}
+            disabled={exporting}
+            className={`bg-blue-100 text-blue-800 px-6 py-2.5 rounded-lg border border-blue-200 font-bold transition flex items-center gap-2  
                 ${exporting ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-200"}
               `}>
-            
-                {exporting ? "Sedang Mengunduh..." : "Export Akun"}
-              
-            
-            </button>
-          </div>
-        </div>
 
-        {/* PER PAGE */}
-        <div className="flex items-center gap-2 text-sm mt-4 text-slate-500">
-          <span>Tampilkan</span>
-          <select 
-            value={perPage} 
-            onChange={(e) => setPerPage(Number(e.target.value))} 
-            className="border border-slate-300 rounded-lg px-3 py-1 "
-          >
-            <option value={5}>5</option>
-            <option value={10}>10</option>
-            <option value={25}>25</option>
-            <option value={50}>50</option>
-          </select>
-          <span>data per halaman</span>
+            {exporting ? "Sedang Mengunduh..." : "Export Akun"}
+
+
+          </button>
         </div>
+      </div>
+
+      {/* PER PAGE */}
+      <div className="flex items-center gap-2 text-sm mt-4 text-slate-500">
+        <span>Tampilkan</span>
+        <select
+          value={perPage}
+          onChange={(e) => setPerPage(Number(e.target.value))}
+          className="border border-slate-300 rounded-lg px-3 py-1 "
+        >
+          <option value={5}>5</option>
+          <option value={10}>10</option>
+          <option value={25}>25</option>
+          <option value={50}>50</option>
+        </select>
+        <span>data per halaman</span>
+      </div>
 
 
       {/* ================= TABLE ================= */}
@@ -516,21 +516,21 @@ const exportAllKoordinators = async () => {
                   title="Hapus"
                 >
                   <Icon icon="solar:trash-bin-trash-outline" width={20} />
-                   <span className="ml-2 text-xs font-bold">Hapus</span>
+                  <span className="ml-2 text-xs font-bold">Hapus</span>
                 </button>
                 <button
-                  onClick={() => navigate(`/koordinator/${item.id}`)}
+                  onClick={() => navigate(`/koordinator/kunjungan/${item.id}`)}
                   className="flex-1 bg-blue-100 hover:bg-blue-100 text-blue-700 py-2.5 rounded-lg flex items-center justify-center transition-colors"
                 >
                   <Icon icon="si:eye-line" width={20} />
-                   <span className="ml-2 text-xs font-bold">Detail</span>
+                  <span className="ml-2 text-xs font-bold">Detail</span>
                 </button>
               </div>
             </div>
           ))}
         </div>
 
-                {/* ================= DESKTOP TABLE VIEW (>= md) ================= */}
+        {/* ================= DESKTOP TABLE VIEW (>= md) ================= */}
         <table className="w-full text-base hidden md:table">
           <thead className="bg-slate-100">
             <tr>
@@ -583,15 +583,14 @@ const exportAllKoordinators = async () => {
                 <td className="px-5 py-4 hidden md:table-cell text-center font-semibold text-slate-700">
                   {item.tps}
                 </td>
-                
+
                 {/* STATUS: Dibuat Center */}
                 <td className="px-5 py-4 hidden md:table-cell text-center">
                   <span
-                    className={`inline-block min-w-[100px] px-4 py-1.5 rounded-full text-xs font-bold ${
-                      item.status === "active"
+                    className={`inline-block min-w-[100px] px-4 py-1.5 rounded-full text-xs font-bold ${item.status === "active"
                         ? "bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold "
                         : "bg-rose-100 text-rose-700 border border-rose-200 font-bold "
-                    }`}
+                      }`}
                   >
                     {item.status === "active" ? "Aktif" : "Tidak Aktif"}
                   </span>
@@ -602,7 +601,7 @@ const exportAllKoordinators = async () => {
                   <div className="flex items-center justify-center gap-2">
                     {/* TOMBOL DETAIL (Mata) */}
                     <button
-                      onClick={() => navigate(`/koordinator/${item.id}`)}
+                      onClick={() => navigate(`/koordinator/kunjungan/${item.id}`)}
                       title="Detail"
                       className="w-9 h-9 flex items-center justify-center rounded-lg text-blue-600 border border-blue-400 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm"
                     >
@@ -645,11 +644,10 @@ const exportAllKoordinators = async () => {
                 <button
                   key={p}
                   onClick={() => setPage(p)}
-                  className={`px-3 py-1 rounded-lg border ${
-                    p === page
+                  className={`px-3 py-1 rounded-lg border ${p === page
                       ? "bg-blue-900 text-white border-blue-900"
                       : "hover:bg-slate-100"
-                  }`}
+                    }`}
                 >
                   {p}
                 </button>

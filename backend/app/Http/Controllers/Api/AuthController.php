@@ -54,10 +54,11 @@ class AuthController extends Controller
             'status' => true,
             'token'  => $token,
             'user'   => [
-                'id'     => $user->id,
-                'name'   => $user->name,
-                'email'  => $user->email,
-                'role'   => $user->role_name,
+                'id'      => $user->id,
+                'name'    => $user->name,
+                'email'   => $user->email,
+                'role'    => $user->role_name,
+                'role_id' => $user->role_id,  // ✅ Tambahkan role_id
             ]
         ]);
     }

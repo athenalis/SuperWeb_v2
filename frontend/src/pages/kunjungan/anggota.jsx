@@ -16,22 +16,40 @@ const maxDate17 = () => {
   return d.toISOString().split('T')[0];
 };
 
+  export default function CreateKunjungan() {
+    const navigate = useNavigate();
+    const [step, setStep] = useState(1);
+    const [kunjunganId, setKunjunganId] = useState(null);
+    const [address, setAddress] = useState("");
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+    const [showExitModal, setShowExitModal] = useState(false);
+    const stepRef = useRef();
+    const [paslon, setPaslon] = useState(null);
 
 
-export default function CreateKunjungan() {
-  const navigate = useNavigate();
-  const [step, setStep] = useState(1);
-  const [kunjunganId, setKunjunganId] = useState(null);
-  const [address, setAddress] = useState("");
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
-  const [showExitModal, setShowExitModal] = useState(false);
-  const stepRef = useRef();
+    useEffect(() => {
+      const handleResize = () => setIsMobile(window.innerWidth < 1024);
+      window.addEventListener("resize", handleResize);
+      return () => window.removeEventListener("resize", handleResize);
+    }, []);
 
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 1024);
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  const fetchPaslon = async (id) => {
+    try {
+      if (!id || id.toString().startsWith("off_")) return; // offline skip
+      const res = await api.get(`/kunjungan/${id}`);
+      if (res.data?.success) {
+        setPaslon(res.data.data?.paslon || null);
+      }
+    } catch (e) {
+      // silent fail
+    }
+  };
+
+  const paslonName =
+    paslon?.nama ||
+    paslon?.name ||
+    paslon?.label ||
+    "pasangan calon";
 
   const handleBackClick = () => {
     // Clear all drafts to ensure fresh start next time
@@ -83,8 +101,8 @@ export default function CreateKunjungan() {
             {isMobile ? (
               // --- MOBILE FLOW (2 STEPS -> 3) ---
               <>
-                {step === 1 && <StepMobileBiodata ref={stepRef} onNext={(id, addr) => { setKunjunganId(id); setAddress(addr); setStep(2); }} />}
-                {step === 2 && <Step3 kunjunganId={kunjunganId} onBack={() => setStep(1)} onComplete={() => {
+                {step === 1 && <StepMobileBiodata ref={stepRef} onNext={async (id, addr) => { setKunjunganId(id); setAddress(addr); fetchPaslon(id); setStep(2); }} />}
+                {step === 2 && <Step3 kunjunganId={kunjunganId} paslon={paslon} onBack={() => setStep(1)} onComplete={() => {
                   localStorage.removeItem("kunjungan_draft_v1");
                   localStorage.removeItem("kunjungan_draft_step1");
                   localStorage.removeItem("kunjungan_draft_members");
@@ -95,9 +113,9 @@ export default function CreateKunjungan() {
             ) : (
               // --- DESKTOP FLOW (3 STEPS) ---
               <>
-                {step === 1 && <Step1 ref={stepRef} onNext={(id, addr) => { setKunjunganId(id); setAddress(addr); setStep(2); }} />}
+                {step === 1 && <Step1 ref={stepRef} onNext={async (id, addr) => { setKunjunganId(id); setAddress(addr); fetchPaslon(id); setStep(2); }} />}
                 {step === 2 && <Step2 kunjunganId={kunjunganId} address={address} onNext={() => setStep(3)} onBack={() => setStep(1)} />}
-                {step === 3 && <Step3 kunjunganId={kunjunganId} onBack={() => setStep(2)} onComplete={() => setStep(4)} />}
+                {step === 3 && <Step3 kunjunganId={kunjunganId} paslon={paslon} onBack={() => setStep(2)} onComplete={() => setStep(4)} />}
                 {step === 4 && <StepComplete onFinish={() => {
                   localStorage.removeItem("kunjungan_draft_v1");
                   localStorage.removeItem("kunjungan_draft_step1");
@@ -1700,7 +1718,7 @@ const StepMobileBiodata = forwardRef(({ onNext }, ref) => {
   );
 });
 
-function Step3({ kunjunganId, onBack, onComplete }) {
+function Step3({ kunjunganId, paslon, onBack, onComplete }) {
   const [answers, setAnswers] = useState({
     tau_paslon: 0,
     tau_informasi: 0,
@@ -1807,16 +1825,16 @@ function Step3({ kunjunganId, onBack, onComplete }) {
   };
 
   const questions = [
-    { key: "tau_paslon", label: "Saya mengenal pasangan Pramono Anung - Rano Karno yang maju dalam pemilihan gubernur ini." },
+    { key: "tau_paslon", label: "Saya mengenal ${paslonName} yang maju dalam pemilihan gubernur ini." },
     { key: "tau_informasi", label: "Informasi mengenai pemilihan gubernur saat ini sudah saya pahami dengan cukup jelas." },
-    { key: "tau_visi_misi", label: "Saya mengetahui visi dan misi pasangan calon Pramono Anung - Rano Karno yang maju dalam pemilihan gubernur." },
+    { key: "tau_visi_misi", label: "Saya mengetahui visi dan misi ${paslonName} yang maju dalam pemilihan gubernur." },
     { key: "tau_program_kerja", label: "Program kerja pasangan calon menjadi pertimbangan utama saya dalam menentukan pilihan." },
-    { key: "tau_rekam_jejak", label: "Rekam jejak digital Pramono Anung - Rano Karno memengaruhi keputusan saya dalam memilih." },
+    { key: "tau_rekam_jejak", label: "Rekam jejak digital ${paslonName} memengaruhi keputusan saya dalam memilih." },
     { key: "pernah_dikunjungi", label: "Pernah dikunjungi sebelumnya oleh relawan atau tim sukses?", type: "yesno" },
-    { key: "percaya", label: "Saya percaya pasangan calon Pramono Anung - Rano Karno memiliki kemampuan untuk memimpin daerah dengan baik." },
+    { key: "percaya", label: "Saya percaya pasangan calon ${paslonName} memiliki kemampuan untuk memimpin daerah dengan baik." },
     { key: "harapan", label: "Saya berharap pemimpin terpilih nanti dapat membawa perubahan yang lebih baik bagi daerah ini.", type: "text" },
-    { key: "pertimbangan", label: "Saya bersedia mempertimbangkan atau memilih Pramono Anung - Rano Karno apabila programnya sesuai dengan kebutuhan daerah saya." },
-    { key: "ingin_memilih", label: "Saya bersedia memilih pasangan Pramono Anung - Rano Karno pada pemilihan gubernur mendatang." },
+    { key: "pertimbangan", label: "Saya bersedia mempertimbangkan atau memilih ${paslonName} apabila programnya sesuai dengan kebutuhan daerah saya." },
+    { key: "ingin_memilih", label: "Saya bersedia memilih ${paslonName} pada pemilihan gubernur mendatang." },
   ];
 
   const likertOptions = [

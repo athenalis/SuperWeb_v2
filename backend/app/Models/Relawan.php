@@ -13,7 +13,6 @@ class Relawan extends Model
 
     protected $fillable = [
         'user_id',
-        'koordinator_id',
         'koor_kunjungan_id',
         'koor_apk_id',
         'paslon_id',
@@ -40,11 +39,6 @@ class Relawan extends Model
     public function user()
     {
         return $this->belongsTo(User::class)->withTrashed();
-    }
-
-    public function koordinator()
-    {
-        return $this->belongsTo(Coordinator::class);
     }
 
     public function koordinatorKunjungan()
@@ -85,20 +79,5 @@ class Relawan extends Model
     public function village()
     {
         return $this->belongsTo(Village::class, 'village_code', 'village_code');
-    }
-
-    public function tasks()
-    {
-        return $this->hasMany(Task::class);
-    }
-
-    public function campaignRelawans()
-    {
-        return $this->hasMany(CampaignRelawan::class);
-    }
-
-    public function visitForms()
-    {
-        return $this->hasMany(VisitForm::class, 'relawan_id');
     }
 }

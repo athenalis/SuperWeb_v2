@@ -66,7 +66,8 @@ export default function BatchVerificationView({ notification, onComplete }) {
         try {
             const res = await api.post(`/kunjungan/${rejectId}/verifikasi`, {
                 status: 'rejected',
-                keterangan: rejectComment
+                keterangan: rejectComment,
+                komentar: rejectComment
             });
             if (res.data.success) {
                 toast.success("Kunjungan ditandai untuk revisi");

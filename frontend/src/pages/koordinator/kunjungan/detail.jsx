@@ -108,7 +108,7 @@ export default function KoordinatorDetail() {
 
           {/* EDIT BUTTON – TETAP KANAN */}
           <button
-            onClick={() => navigate(`/koordinator/${id}/edit`)}
+            onClick={() => navigate(`/koordinator/kunjungan/${id}/edit`)}
             title="Edit"
             className="absolute right-0 top-1/2 -translate-y-1/2
                     w-11 h-11 flex items-center justify-center
@@ -162,7 +162,7 @@ export default function KoordinatorDetail() {
 
           {/* KEMBALI (TETAP TEXT) */}
           <button
-            onClick={() => navigate("/koordinator")}
+            onClick={() => navigate("/koordinator/kunjungan")}
             className="px-5 py-2.5 rounded-lg
                       bg-slate-200 text-slate-800 font-medium
                       hover:bg-slate-300 transition"

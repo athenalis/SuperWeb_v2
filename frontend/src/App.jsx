@@ -70,7 +70,6 @@ export default function App() {
    */
   return (
     <Routes>
-
       {/* ROOT */}
       <Route path="/" element={<Navigate to="/login" replace />} />
 
@@ -113,20 +112,17 @@ export default function App() {
 
           {/* =========== ADMIN_PASLON & KUNJUNGAN_KOORDINATOR (role_id: 2, 4) =========== */}
           <Route element={<RequireRole allowedRoleIds={[2, 4]} />}>
-            <Route path="relawan" element={<Relawan />} />
-            <Route path="relawan/:id" element={<DetailRelawan />} />
+            <Route path="relawan/kunjungan" element={<Relawan />} />
+            <Route path="relawan/kunjungan/:id" element={<DetailRelawan />} />
             <Route path="relawan/apk/:id" element={<DetailRelawanApk />} />
             <Route path="relawan/apk" element={<RelawanApk />} />
           </Route>
 
           {/* =========== KUNJUNGAN_KOORDINATOR ONLY (role_id: 4) =========== */}
           <Route element={<RequireRole allowedRoleIds={[4]} />}>
-            <Route path="relawan/create" element={<CreateRelawan />} />
-            <Route path="relawan/:id/edit" element={<EditRelawan />} />
-            <Route path="relawan/apk" element={<RelawanApk />} />
-            <Route path="relawan/apk/create" element={<CreateRelawanApk />} />
-            <Route path="relawan/apk/:id/edit" element={<EditRelawanApk />} />
-            <Route path="relawan/apk/:id" element={<DetailRelawanApk />} />
+            <Route path="relawan/kunjungan" element={<Relawan />} />
+            <Route path="relawan/kunjungan/create" element={<CreateRelawan />} />
+            <Route path="relawan/kunjungan/:id/edit" element={<EditRelawan />} />
           </Route>
 
           {/* =========== KUNJUNGAN (role_id: 6 only) =========== */}
@@ -147,11 +143,18 @@ export default function App() {
             <Route path="superadmin" element={<SuperAdmin1 />} />
           </Route>
 
-          {/* =========== APK (role_id: 5,7, + relawan_apk kalau ada) =========== */}
-          <Route element={<RequireRole allowedRoleIds={[5, 7]} />}>
+          {/* =========== APK (role_id: 3,5,7, + relawan_apk kalau ada) =========== */}
+          <Route element={<RequireRole allowedRoleIds={[3, 5, 7]} />}>
             <Route path="apk" element={<Apk />} />
+            
           </Route>
 
+          <Route element={<RequireRole allowedRoleIds={[5]} />}>
+            <Route path="relawan/apk" element={<RelawanApk />} />
+            <Route path="relawan/apk/create" element={<CreateRelawanApk />} />
+            <Route path="relawan/apk/:id/edit" element={<EditRelawanApk />} />
+            <Route path="relawan/apk/:id" element={<DetailRelawanApk />} />
+          </Route>
         </Route>
       </Route>
     </Routes>

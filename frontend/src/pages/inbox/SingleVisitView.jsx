@@ -63,7 +63,8 @@ export default function SingleVisitView({ notification, onComplete }) {
         try {
             const res = await api.post(`/kunjungan/${visit.id}/verifikasi`, {
                 status: 'rejected',
-                keterangan: rejectComment
+                keterangan: rejectComment,
+                komentar: rejectComment
             });
             if (res.data.success) {
                 toast.success("Kunjungan ditandai untuk revisi");
@@ -121,7 +122,7 @@ export default function SingleVisitView({ notification, onComplete }) {
                     textColor: "text-blue-800"
                 };
             }
-            if (visit.status_verifikasi === "rejected") {
+            if (visit.status_verifikasi === "rejected" || visit.status_verifikasi === "needs_revision") {
                 return {
                     icon: "❌",
                     title: "Perlu Perbaikan!",
@@ -329,7 +330,7 @@ export default function SingleVisitView({ notification, onComplete }) {
                                     <Icon icon="mdi:check-circle" width={20} />
                                     <span className="font-semibold">Sudah Disetujui</span>
                                 </div>
-                            ) : visit.status_verifikasi === 'rejected' ? (
+                            ) : (visit.status_verifikasi === 'rejected' || visit.status_verifikasi === 'needs_revision') ? (
                                 <div className="bg-red-50 border border-red-200 text-red-800 py-3 rounded-lg">
                                     <div className="flex items-center justify-center gap-2 mb-2">
                                         <Icon icon="mdi:close-circle" width={20} />

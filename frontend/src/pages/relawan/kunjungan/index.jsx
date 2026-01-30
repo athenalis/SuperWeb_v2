@@ -229,13 +229,13 @@ export default function Relawan() {
     <div className="space-y-6">
       {/* ================= HEADER ================= */}
       <div className="bg-white rounded-lg p-7 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4 ">
-        <h1 className="text-3xl font-bold text-blue-900 ">Data Relawan</h1>
+        <h1 className="text-3xl font-bold text-blue-900 ">Data Relawan Kunjungan</h1>
         {role !== "admin" && (
           <div className="flex flex-col sm:flex-row gap-3">
             <button onClick={() => setOpenImport(true)} className="bg-blue-500/15 text-blue-800 border border-blue-200/40 px-4 py-2 rounded-lg hover:bg-blue-500/25">
               Import Data Relawan
             </button>
-            <button onClick={() => navigate("/relawan/create")} className="bg-blue-900 text-white px-6 py-3 rounded-lg hover:bg-blue-800">
+            <button onClick={() => navigate("/relawan/kunjungan/create")} className="bg-blue-900 text-white px-6 py-3 rounded-lg hover:bg-blue-800">
               Tambah Relawan +
             </button>
           </div>
@@ -591,6 +591,11 @@ export default function Relawan() {
           <div className="relative bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 z-10">
             <button onClick={closeImportModal} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><Icon icon="mdi:close" width="22" /></button>
             <h2 className="text-3xl text-blue-900 font-semibold mb-2">Import Data Relawan</h2>
+            <ol className="list-decimal list-inside text-md text-slate-600 space-y-1 mb-5">
+                <li>Download template Excel</li>
+                <li>Isi data sesuai format</li>
+                <li>Upload file lalu klik Import</li>
+              </ol>
             <button className="w-full border border-blue-600 text-blue-600 py-2.5 rounded-lg mb-7 hover:bg-blue-50" onClick={downloadTemplate}>Download Template Excel</button>
             <div className="mb-1">
               <label className="text-md font-medium mb-2 block">Upload File Excel</label>

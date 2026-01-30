@@ -138,22 +138,6 @@ export default function RelawanDetail() {
     );
   }
 
-  if (notFound || !data) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] text-slate-400">
-        <Icon icon="mdi:account-off-outline" width="64" className="mb-4 opacity-30" />
-        <h3 className="text-xl font-bold text-slate-600 mb-2">Relawan Tidak Ditemukan</h3>
-        <p className="mb-6">Data relawan dengan ID tersebut tidak tersedia atau sudah dihapus.</p>
-        <button
-          onClick={() => navigate("/relawan")}
-          className="px-5 py-2 bg-blue-900 text-white rounded-xl font-bold hover:bg-blue-800 transition"
-        >
-          Kembali ke Daftar
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="flex justify-center px-2 sm:px-4">
       <div className="w-full max-w-8xl bg-white rounded-xl shadow p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 lg:space-y-12">
@@ -164,7 +148,7 @@ export default function RelawanDetail() {
               {data.nama}
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">Detail Profil Relawan</p>
-          </div>
+          </div>  
 
           <div className="flex items-center gap-2 sm:gap-3 w-full md:w-auto">
             {role !== "admin" && (

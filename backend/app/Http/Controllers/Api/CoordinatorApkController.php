@@ -40,6 +40,34 @@ class CoordinatorApkController extends Controller
         return (int) $this->currentAdminApk()->paslon_id;
     }
 
+    private function currentPaslonIdUniversal(): int
+    {
+        $user = Auth::user();
+        if (!$user) {
+            abort(401, 'Unauthorized');
+        }
+
+        $roleSlug = $this->roleSlug($user);
+
+        if ($roleSlug === 'admin_apk') {
+            $admin = AdminApk::where('user_id', $user->id)
+                ->whereNull('deleted_at')
+                ->first();
+        } elseif ($roleSlug === 'admin_paslon') {
+            $admin = AdminPaslon::where('user_id', $user->id)
+                ->whereNull('deleted_at')
+                ->first();
+        } else {
+            abort(403, 'Role tidak diizinkan');
+        }
+
+        if (!$admin || !$admin->paslon_id) {
+            abort(403, 'Paslon tidak ditemukan');
+        }
+
+        return (int) $admin->paslon_id;
+    }
+
     private function roleSlug($user): ?string
     {
         return DB::table('roles')->where('id', $user->role_id)->value('role');
@@ -53,7 +81,7 @@ class CoordinatorApkController extends Controller
 
     public function index(Request $request)
     {
-        $paslonId = $this->currentPaslonId();
+        $paslonId = $this->currentPaslonIdUniversal();
 
         $query = CoordinatorApk::with([
             'province:province_code,province',
@@ -94,7 +122,7 @@ class CoordinatorApkController extends Controller
 
     public function show($id)
     {
-        $paslonId = $this->currentPaslonId();
+        $paslonId = $this->currentPaslonIdUniversal();
 
         $data = CoordinatorApk::with([
             'province',
@@ -124,7 +152,8 @@ class CoordinatorApkController extends Controller
             'nik' => 'required|digits:16'
         ]);
 
-        $paslonId = $this->currentPaslonId();
+        $paslonId = $this->currentPaslonIdUniversal();
+
 
         // 1) cek aktif di paslon current
         $activeHere = CoordinatorApk::where('paslon_id', $paslonId)

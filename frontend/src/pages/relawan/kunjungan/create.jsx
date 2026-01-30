@@ -234,7 +234,7 @@ export default function InputRelawan({ onClose }) {
   }, [wilayah]);
 
   const mutation = useMutation({
-    mutationFn: async () => api.post("/relawan", form),
+    mutationFn: async () => api.post("/relawan/kunjungan", form),
 
     onSuccess: (res) => {
       queryClient.invalidateQueries(["relawan"]);

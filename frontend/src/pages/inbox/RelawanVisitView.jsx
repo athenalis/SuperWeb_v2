@@ -168,7 +168,7 @@ export default function RelawanVisitView({ notification, onComplete }) {
                                 <Icon icon="mdi:check-circle" width={20} />
                                 <span className="font-semibold">Sudah Disetujui</span>
                             </div>
-                        ) : visit.status_verifikasi === 'rejected' ? (
+                        ) : (visit.status_verifikasi === 'rejected' || visit.status_verifikasi === 'needs_revision') ? (
                             <div className="bg-red-50 border border-red-200 text-red-800 py-3 rounded-lg">
                                 <div className="flex items-center justify-center gap-2 mb-2">
                                     <Icon icon="mdi:close-circle" width={20} />

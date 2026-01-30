@@ -340,7 +340,7 @@ export default function PaslonIndex() {
           <h3 className="font-semibold mb-2">
             Rekapitulasi Suara Paslon
             {chartRegionLabel && (
-              <span className="text-slate-500 font-normal">
+              <span className="font-semibold mb-2">
                 {" "}({chartRegionLabel})
               </span>
             )}

@@ -361,23 +361,23 @@ export default function SuperadminDashboard() {
   return (
     <div className="min-h-screen bg-slate-100">
       <Navbar />
-
+      
       <div className="px-8 py-8 space-y-8">
         <HeaderBanner
           title={`Selamat Datang, ${role}`}
           subtitle="Sistem Manajemen SuperWeb"
-          icon="solar:home-2-bold"
+          icon="proicons:home"
         />
 
         {/* PASLON */}
         <div>
           <div className="flex items-end justify-between mb-4">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-2xl font-bold text-blue-800">
                 Daftar Pasangan Calon
               </h2>
-              <p className="text-sm text-slate-500 mt-1">
-                Kelola paslon & partai pengusung.
+              <p className="text-md text-slate-500 mt-1">
+                Kelola paslon & partai pengusung
               </p>
             </div>
 
@@ -406,11 +406,10 @@ export default function SuperadminDashboard() {
                 className="w-12 h-12 text-slate-300 mx-auto mb-2"
               />
               <div className="text-slate-700 font-semibold">
-                Data paslon kosong di UI
+                Data paslon kosong
               </div>
               <div className="text-xs text-slate-500 mt-1">
-                Biasanya karena endpoint salah (contoh: baseURL sudah /api).
-                Coba cek Network tab untuk request paslons.
+                Silakan tambah paslon.
               </div>
             </div>
           ) : (
@@ -441,28 +440,24 @@ export default function SuperadminDashboard() {
                     </div>
 
                     <div className="absolute top-3 left-3">
-                      <span className="inline-flex items-center gap-1 text-[11px] text-slate-700 bg-white/80 border border-slate-200 px-2.5 py-1 rounded-full font-semibold backdrop-blur">
-                        <Icon
-                          icon="mdi:numeric"
-                          className="w-4 h-4 text-slate-500"
-                        />
-                        No. {p.nomor_urut}
+                      <span className="inline-flex items-center gap-1 text-[13px] text-slate-700 bg-white/80 border border-slate-200 px-2.5 py-1 rounded-full font-semibold backdrop-blur">
+                        Nomor Urut {p.nomor_urut}
                       </span>
                     </div>
 
                     <div className="absolute inset-0 bg-blue-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-20">
                       <span className="text-white font-semibold text-sm flex items-center gap-2">
-                        <Icon icon="mdi:eye" className="w-5 h-5" />
+                        <Icon icon="solar:eye-linear" width="24" height="24" />
                         Lihat Detail
                       </span>
                     </div>
                   </div>
 
                   <div className="p-5">
-                    <h3 className="font-semibold text-slate-900 text-[15px] leading-snug line-clamp-2">
+                    <h3 className="font-semibold text-slate-900 text-lg leading-snug line-clamp-2">
                       {p.name}
                     </h3>
-                    <p className="text-xs text-slate-500 mt-2">
+                    <p className="text-sm text-slate-500 mt-2">
                       {p.parties?.length || 0} partai pengusung
                     </p>
                   </div>
@@ -547,7 +542,7 @@ export default function SuperadminDashboard() {
                       </td>
                       <td className="px-6 py-4">
                         <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                          <Icon icon="mdi:eye" className="w-5 h-5" />
+                          <Icon icon="solar:eye-linear" className="w-5 h-5" />
                         </button>
                       </td>
                     </tr>
@@ -576,7 +571,7 @@ export default function SuperadminDashboard() {
               />
 
               <div className="space-y-2">
-                <label className="block text-sm font-semibold text-slate-700">
+                <label className="block text-md font-semibold text-slate-800">
                   Partai Pengusung
                 </label>
                 <Select
@@ -601,7 +596,7 @@ export default function SuperadminDashboard() {
               </div>
 
               <div className="space-y-2">
-                <label className="block text-sm font-semibold text-slate-700">
+                <label className="block text-md font-semibold text-slate-800">
                   Foto Paslon
                 </label>
                 <div
@@ -734,7 +729,7 @@ export default function SuperadminDashboard() {
 
                   <div className="mt-3 grid grid-cols-1 gap-3">
                     <div>
-                      <div className="text-[11px] text-slate-500 font-medium tracking-wide uppercase">
+                      <div className="text-[13px] text-slate-500 font-medium tracking-wide uppercase">
                         Calon Gubernur
                       </div>
                       <div className="text-lg font-semibold text-slate-900 leading-snug">
@@ -742,7 +737,7 @@ export default function SuperadminDashboard() {
                       </div>
                     </div>
                     <div>
-                      <div className="text-[11px] text-slate-500 font-medium tracking-wide uppercase">
+                      <div className="text-[13px] text-slate-500 font-medium tracking-wide uppercase">
                         Calon Wakil Gubernur
                       </div>
                       <div className="text-lg font-semibold text-slate-900 leading-snug">
@@ -921,7 +916,7 @@ export default function SuperadminDashboard() {
 /* =====================
   UI COMPONENTS
 ===================== */
-function HeaderBanner({ title, subtitle, icon = "solar:home-2-bold" }) {
+function HeaderBanner({ title, subtitle, icon = "proicons:home" }) {
   return (
     <div className="bg-gradient-to-br from-blue-900 via-blue-800 to-blue-700 text-white rounded-lg sm:rounded-xl md:rounded-2xl p-3 sm:p-5 md:p-8 shadow-xl relative overflow-hidden">
       <div className="absolute top-0 right-0 w-24 h-24 sm:w-40 sm:h-40 md:w-64 md:h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
@@ -949,13 +944,12 @@ function Modal({ children, onClose, title }) {
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" role="dialog" aria-modal="true">
       <div onClick={onClose} className="absolute inset-0 bg-black/40" />
       <div className="relative w-full max-w-xl rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden animate-[modalIn_.18s_ease-out]">
         <div className="px-6 py-5 flex items-start justify-between">
           <div className="pr-10">
-            <h2 className="mt-2 text-lg font-semibold text-slate-900 leading-snug">{title}</h2>
-            <p className="mt-1 text-sm text-slate-500">Lengkapi informasi di bawah, lalu simpan.</p>
+            <h2 className="mt-2 text-2xl font-bold text-blue-800 leading-snug">{title}</h2>
           </div>
           <button
             onClick={onClose}
@@ -1003,7 +997,7 @@ function ModalActions({ onCancel, onSubmit, submitText = "Simpan", isSubmitting 
 function InputField({ label, icon, ...props }) {
   return (
     <div className="space-y-2">
-      <label className="block text-sm font-semibold text-slate-700">{label}</label>
+      <label className="block text-md font-semibold text-slate-800">{label}</label>
       <div className="relative">
         {icon && <div className="absolute left-3 top-1/2 -translate-y-1/2">{icon}</div>}
         <input
