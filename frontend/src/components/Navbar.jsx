@@ -22,6 +22,8 @@ export default function Navbar() {
   const [openSuara, setOpenSuara] = useState(false);
   const [openKoordinator, setOpenKoordinator] = useState(false);
   const [openRelawan, setOpenRelawan] = useState(false);
+  const [openKoordinatorApk, setOpenKoordinatorApk] = useState(false);
+  const [openRelawanApk, setOpenRelawanApk] = useState(false);
 
   const [role, setRole] = useState("");
   const [name, setName] = useState("Guest");
@@ -34,11 +36,15 @@ export default function Navbar() {
   const suaraRef = useRef(null);
   const koorRef = useRef(null);
   const relawanRef = useRef(null);
+  const koorApkRef = useRef(null);
+  const relawanApkRef = useRef(null);
 
   const closeAllDropdowns = () => {
     setOpenSuara(false);
     setOpenKoordinator(false);
     setOpenRelawan(false);
+    setOpenKoordinatorApk(false);
+    setOpenRelawanApk(false);
   };
 
   const handleNotificationClick = () => {
@@ -116,8 +122,10 @@ export default function Navbar() {
       const insideSuara = suaraRef.current?.contains(t);
       const insideKoor = koorRef.current?.contains(t);
       const insideRelawan = relawanRef.current?.contains(t);
+      const insideKoorApk = koorApkRef.current?.contains(t);
+      const insideRelawanApk = relawanApkRef.current?.contains(t);
 
-      if (!insideSuara && !insideKoor && !insideRelawan) {
+      if (!insideSuara && !insideKoor && !insideRelawan && !insideKoorApk && !insideRelawanApk) {
         closeAllDropdowns();
       }
     };
@@ -140,6 +148,11 @@ export default function Navbar() {
     { name: "Suara", path: "/suara/dashboard", show: ["admin_paslon"] },
 
     { name: "APK", path: "/apk", show: ["admin_paslon", "admin_apk", "apk_koordinator", "apk_kurir"] },
+
+    // Menu khusus admin_apk
+    { name: "Koordinator APK", path: "/koordinator/apk", show: ["admin_apk"] },
+    { name: "Relawan APK", path: "/relawan/apk", show: ["admin_apk"] },
+    { name: "Kurir APK", path: "/kurir-apk", show: ["admin_apk"] },
 
     { name: "Kunjungan", path: "/kunjungan", show: ["relawan"] },
   ];
@@ -197,8 +210,7 @@ export default function Navbar() {
     "absolute top-full left-0 mt-3 w-56 bg-white text-slate-800 rounded-lg shadow-lg overflow-hidden z-50";
 
   const dropdownItemClass = (isActive) =>
-    `block px-4 py-2 text-sm hover:bg-blue-50 transition ${
-      isActive ? "bg-blue-100 font-semibold" : ""
+    `block px-4 py-2 text-sm hover:bg-blue-50 transition ${isActive ? "bg-blue-100 font-semibold" : ""
     }`;
 
   return (
@@ -229,9 +241,8 @@ export default function Navbar() {
                         <span>Koordinator</span>
                         <Icon
                           icon="mdi:chevron-down"
-                          className={`text-lg translate-y-[1px] transition-transform duration-300 ${
-                            openKoordinator ? "rotate-180" : "rotate-0"
-                          }`}
+                          className={`text-lg translate-y-[1px] transition-transform duration-300 ${openKoordinator ? "rotate-180" : "rotate-0"
+                            }`}
                         />
                       </button>
 
@@ -296,9 +307,8 @@ export default function Navbar() {
                         <span>Relawan</span>
                         <Icon
                           icon="mdi:chevron-down"
-                          className={`text-lg transition-transform ${
-                            openRelawan ? "rotate-180" : ""
-                          }`}
+                          className={`text-lg transition-transform ${openRelawan ? "rotate-180" : ""
+                            }`}
                         />
                       </button>
 
@@ -336,9 +346,8 @@ export default function Navbar() {
                         <span>Suara</span>
                         <Icon
                           icon="mdi:chevron-down"
-                          className={`text-lg translate-y-[1px] transition-transform duration-300 ${
-                            openSuara ? "rotate-180" : "rotate-0"
-                          }`}
+                          className={`text-lg translate-y-[1px] transition-transform duration-300 ${openSuara ? "rotate-180" : "rotate-0"
+                            }`}
                         />
                       </button>
 
@@ -383,9 +392,8 @@ export default function Navbar() {
               title="Notifikasi"
             >
               <div
-                className={`transition-transform origin-top ${
-                  unreadCount > 0 ? "animate-swing" : "hover:animate-swing"
-                }`}
+                className={`transition-transform origin-top ${unreadCount > 0 ? "animate-swing" : "hover:animate-swing"
+                  }`}
               >
                 <Icon icon="mdi:bell" width={22} className="text-white" />
               </div>
@@ -406,9 +414,8 @@ export default function Navbar() {
           {(role === "kunjungan_koordinator" || role === "relawan") && (
             <button onClick={handleNotificationClick} className="relative p-1" title="Notifikasi">
               <div
-                className={`transition-transform origin-top ${
-                  unreadCount > 0 ? "animate-swing" : "active:animate-swing"
-                }`}
+                className={`transition-transform origin-top ${unreadCount > 0 ? "animate-swing" : "active:animate-swing"
+                  }`}
               >
                 <Icon icon="mdi:bell" width={24} className="text-white" />
               </div>
@@ -480,75 +487,74 @@ export default function Navbar() {
                 );
               }
 
-if (menu.name === "Relawan") {
-  if (!canSeeRelawan) return null;
+              if (menu.name === "Relawan") {
+                if (!canSeeRelawan) return null;
 
-  if (role === "kunjungan_koordinator") {
-    return (
-      <NavLink
-        key="Relawan"
-        to="/relawan/kunjungan"
-        onClick={() => setOpen(false)}
-        className="block text-lg font-medium"
-      >
-        Relawan
-      </NavLink>
-    );
-  }
+                if (role === "kunjungan_koordinator") {
+                  return (
+                    <NavLink
+                      key="Relawan"
+                      to="/relawan/kunjungan"
+                      onClick={() => setOpen(false)}
+                      className="block text-lg font-medium"
+                    >
+                      Relawan
+                    </NavLink>
+                  );
+                }
 
-  if (role === "apk_koordinator") {
-    return (
-      <NavLink
-        key="Relawan"
-        to="/relawan/apk"
-        onClick={() => setOpen(false)}
-        className="block text-lg font-medium"
-      >
-        Relawan
-      </NavLink>
-    );
-  }
+                if (role === "apk_koordinator") {
+                  return (
+                    <NavLink
+                      key="Relawan"
+                      to="/relawan/apk"
+                      onClick={() => setOpen(false)}
+                      className="block text-lg font-medium"
+                    >
+                      Relawan
+                    </NavLink>
+                  );
+                }
 
-  // admin dropdown
-  return (
-    <div key="Relawan">
-      <button
-        onClick={() => {
-          setOpenRelawan((v) => !v);
-          setOpenKoordinator(false);
-          setOpenSuara(false);
-        }}
-        className="flex items-center gap-2 text-lg font-medium"
-      >
-        Relawan
-        <Icon
-          icon="mdi:chevron-down"
-          className={`transition-transform ${
-            openRelawan ? "rotate-180" : ""
-          }`}
-        />
-      </button>
+                // admin dropdown
+                return (
+                  <div key="Relawan">
+                    <button
+                      onClick={() => {
+                        setOpenRelawan((v) => !v);
+                        setOpenKoordinator(false);
+                        setOpenSuara(false);
+                      }}
+                      className="flex items-center gap-2 text-lg font-medium"
+                    >
+                      Relawan
+                      <Icon
+                        icon="mdi:chevron-down"
+                        className={`transition-transform ${openRelawan ? "rotate-180" : ""
+                          }`}
+                      />
+                    </button>
 
-      {openRelawan && (
-        <div className="pl-4 mt-2 space-y-2">
-          {relawanMenus.map((sm) => (
-            <NavLink
-              key={sm.name}
-              to={sm.path}
-              onClick={() => {
-                setOpen(false);
-                setOpenRelawan(false);
-              }}
-              className="block text-base"
-            >
-              {sm.name}
-            </NavLink>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+                    {openRelawan && (
+                      <div className="pl-4 mt-2 space-y-2">
+                        {relawanMenus.map((sm) => (
+                          <NavLink
+                            key={sm.name}
+                            to={sm.path}
+                            onClick={() => {
+                              setOpen(false);
+                              setOpenRelawan(false);
+                            }}
+                            className="block text-base"
+                          >
+                            {sm.name}
+                          </NavLink>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
 
               // SUARA MOBILE
               if (menu.name === "Suara") {

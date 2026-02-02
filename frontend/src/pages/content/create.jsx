@@ -509,7 +509,7 @@ export default function CreateContent() {
 
       await axios.post("/content-plans", payload);
       toast.success("Content plan berhasil dibuat!");
-      navigate("/content");
+      navigate("/konten");
     } catch (e2) {
       console.error(e2);
       toast.error("Gagal membuat content plan");
@@ -1084,7 +1084,7 @@ export default function CreateContent() {
 
                 <button
                   type="button"
-                  onClick={() => navigate("/content")}
+                  onClick={() => navigate("/konten")}
                   className="text-slate-600 hover:underline"
                 >
                   Batal

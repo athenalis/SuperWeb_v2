@@ -331,25 +331,24 @@ class ContentPlanController extends Controller
             );
 
             // =========================
-            // ADS (HARD DELETE then maybe insert)
-            // rule:
-            // - jika is_ads=false => hapus beneran (forceDelete)
-            // - jika is_ads=true  => hapus dulu, lalu insert dari ads_by_platform
-            // - jika is_ads tidak dikirim:
-            //     - kalau FE tidak mau ngurus ads, dan mau "tanpa ads", kirim is_ads=false
-            //     - kalau tidak dikirim, kita anggap tidak mengubah ads (KEEP)
+            // ADS rules sesuai kebutuhan kamu
             // =========================
+            $canceledStatusId = 5; // <-- ganti kalau ID "Dibatalkan" beda
+            $isCanceled = ((int) $validated['status_id'] === $canceledStatusId);
+            $refundRequested = (bool) ($validated['refund_budget'] ?? false);
+
             $isAdsProvided = $request->has('is_ads');
 
-            if ($isAdsProvided) {
+            // ✅ HANYA boleh force delete ads kalau BELUM dibatalkan
+            if (!$isCanceled && $isAdsProvided) {
                 $isAds = $request->boolean('is_ads');
 
-                // hapus beneran semua ads lama (termasuk yang sudah trashed)
+                // reset ads lama -> hard delete
                 ContentPlatformAd::withTrashed()
                     ->where('content_plan_id', $id)
                     ->forceDelete();
 
-                // kalau is_ads true dan ada payload, insert baru
+                // kalau is_ads true -> insert ads baru
                 if ($isAds && !empty($validated['ads_by_platform'])) {
                     $adsData = [];
                     foreach ($validated['ads_by_platform'] as $platformId => $ads) {
@@ -367,7 +366,9 @@ class ContentPlanController extends Controller
                     ContentPlatformAd::insert($adsData);
                 }
             }
-            // kalau is_ads tidak dikirim => KEEP ads seperti sebelumnya (tidak dihapus)
+
+            // ✅ Kalau DIBATALKAN & refund_budget = false → jangan sentuh ads (keep)
+            // (jadi di sini tidak ada aksi apa pun untuk ads)
 
             // =========================
             // Influencers (sync)
@@ -375,12 +376,14 @@ class ContentPlanController extends Controller
             $contentPlan->influencers()->sync($validated['influencer_ids'] ?? []);
 
             // =========================
-            // Refund logic (optional)
+            // Refund logic:
+            // - hanya kalau DIBATALKAN & refund_budget=true
+            // - budget_content + budget_ads dihitung lalu balikin ke total_budget
+            // - lalu SOFT DELETE budget & ads (bukan force)
             // =========================
-            $shouldRefund = ((int) $validated['status_id'] === 5) && ((bool) ($validated['refund_budget'] ?? false));
+            $shouldRefund = ($isCanceled && $refundRequested);
 
             if ($shouldRefund && !$alreadyRefunded) {
-                // hitung refund pakai data terbaru
                 $budgetContent = (float) (ContentBudget::withTrashed()
                     ->where('content_plan_id', $id)
                     ->value('budget_content') ?? 0);
@@ -395,9 +398,9 @@ class ContentPlanController extends Controller
                     ->where('paslon_id', $paslonId)
                     ->increment('amount', $refundAmount);
 
-                // kalau kamu mau refund = hapus permanen juga:
-                ContentBudget::withTrashed()->where('content_plan_id', $id)->forceDelete();
-                ContentPlatformAd::withTrashed()->where('content_plan_id', $id)->forceDelete();
+                // ✅ sesuai rule kamu: SOFT DELETE, bukan force delete
+                ContentBudget::where('content_plan_id', $id)->delete();
+                ContentPlatformAd::where('content_plan_id', $id)->delete();
 
                 $contentPlan->refund_budget = true;
                 $contentPlan->save();
@@ -407,7 +410,6 @@ class ContentPlanController extends Controller
 
             DB::commit();
 
-            // reload lengkap buat response
             $contentPlan->refresh()->load([
                 'status',
                 'budgetWithTrashed',
@@ -435,7 +437,7 @@ class ContentPlanController extends Controller
         }
     }
 
-        public function contentSummary()
+    public function contentSummary()
     {
         $paslonId = $this->currentPaslonId();
         $cacheKey = "content_summary_{$paslonId}";

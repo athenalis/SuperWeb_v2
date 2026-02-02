@@ -403,7 +403,7 @@ export default function EditContent() {
       setLoading(true);
       await api.put(`/content-plans/${id}`, payload);
       toast.success("Perubahan berhasil disimpan");
-      navigate(`/content/${id}`);
+      navigate(`/konten/${id}`);
     } catch (err) {
       console.error("PUT Error:", err.response?.data || err.message);
       const errorMsg = err.response?.data?.error || err.response?.data?.message || "Gagal menyimpan perubahan";
@@ -1080,7 +1080,7 @@ export default function EditContent() {
 
                 <button
                   type="button"
-                  onClick={() => navigate(`/content/${id}`)}
+                  onClick={() => navigate(`/konten/${id}`)}
                   className="text-gray-600 hover:underline"
                 >
                   Batal

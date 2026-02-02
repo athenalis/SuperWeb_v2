@@ -4,9 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Helpers\ActivityLogger;
+use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class ApkStockController extends Controller
 {
@@ -50,24 +51,30 @@ class ApkStockController extends Controller
 
         $request->validate($rules);
 
-        $user = auth()->user();
+        /** @var User|null $user */
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['status' => false, 'message' => 'Unauthorized'], 401);
+        }
+
         $paslonId = $this->adminApkPaslonId($user->id);
         if (!$paslonId) {
-            return response()->json(['status'=>false,'message'=>'Paslon tidak ditemukan'], 403);
+            return response()->json(['status' => false, 'message' => 'Paslon tidak ditemukan'], 403);
         }
 
         DB::transaction(function () use ($request, $user, $paslonId, $type) {
-
             $item = DB::table('apk_items')
-                ->where('id', $request->item_id)
-                ->where('paslon_id', $paslonId)
+                ->where('id', (int)$request->item_id)
+                ->where('paslon_id', (int)$paslonId)
                 ->lockForUpdate()
                 ->first();
 
-            if (!$item) abort(404, 'Item tidak ditemukan');
+            if (!$item) {
+                abort(404, 'Item tidak ditemukan');
+            }
 
             $stockRow = DB::table('apk_item_stocks')
-                ->where('item_id', $request->item_id)
+                ->where('item_id', (int)$request->item_id)
                 ->lockForUpdate()
                 ->first();
 
@@ -97,19 +104,19 @@ class ApkStockController extends Controller
 
             // 1) simpan transaksi
             DB::table('apk_stock_transactions')->insert([
-                'paslon_id' => $paslonId,
-                'item_id' => $request->item_id,
+                'paslon_id' => (int)$paslonId,
+                'item_id' => (int)$request->item_id,
                 'type' => $type,
                 'qty' => $qty,
                 'note' => $request->note,
                 'total_cost' => ($type === 'IN' && $budgetAdd > 0) ? $budgetAdd : null,
-                'created_by' => $user->id,
+                'created_by' => (int)$user->id,
                 'created_at' => now(),
             ]);
 
             // 2) update ringkasan
             DB::table('apk_item_stocks')->updateOrInsert(
-                ['item_id' => $request->item_id],
+                ['item_id' => (int)$request->item_id],
                 [
                     'qty_current' => $qtyAfter,
                     'budget_total' => $budgetAfter,
@@ -117,8 +124,8 @@ class ApkStockController extends Controller
                 ]
             );
 
-            // 3) sync ke apk_items (ini yang kamu minta: stock & budget berubah)
-            DB::table('apk_items')->where('id', $request->item_id)->update([
+            // 3) sync ke apk_items (stock & budget berubah)
+            DB::table('apk_items')->where('id', (int)$request->item_id)->update([
                 'stock' => $qtyAfter,
                 'budget_total' => $budgetAfter,
                 'updated_at' => now(),
@@ -130,7 +137,7 @@ class ApkStockController extends Controller
                 'target_type' => 'apk_stock',
                 'target_name' => $item->name,
                 'meta' => [
-                    'item_id' => $request->item_id,
+                    'item_id' => (int)$request->item_id,
                     'type' => $type,
                     'qty' => (string)$qty,
                     'qty_before' => (string)$qtyBefore,

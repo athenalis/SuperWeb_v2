@@ -146,7 +146,7 @@ export default function Index() {
   const [rows, setRows] = useState([]);
   const [loadingInfluencer, setLoadingInfluencer] = useState(false);
   const [infPage, setInfPage] = useState(1);
-  const [infPerPage] = useState(5);
+  const [infPerPage] = useState(7);
   const [infTotalPage, setInfTotalPage] = useState(1);
   const [infSearch, setInfSearch] = useState("");
   const [debouncedInfSearch, setDebouncedInfSearch] = useState("");
@@ -425,7 +425,7 @@ export default function Index() {
 
           <button
             className="bg-blue-900 text-white px-6 py-3 rounded-lg hover:bg-blue-800 w-full sm:w-auto"
-            onClick={() => navigate("/content/create")}
+            onClick={() => navigate("/konten/create")}
           >
             Tambah Konten +
           </button>
@@ -690,7 +690,7 @@ export default function Index() {
                     <td className="px-4 py-4">
                       <div className="flex justify-center items-center gap-2">
                         <button
-                          onClick={() => navigate(`/content/${item.id}`)}
+                          onClick={() => navigate(`/konten/${item.id}`)}
                           title="Lihat Detail"
                           className="w-9 h-9 flex items-center justify-center text-blue-600 border border-blue-400 bg-white rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm"
                         >
@@ -698,19 +698,11 @@ export default function Index() {
                         </button>
 
                         <button
-                          onClick={() => navigate(`/content/${item.id}/analytic`)}
+                          onClick={() => navigate(`/konten/${item.id}/analytic`)}
                           title="Analitik"
                           className="w-9 h-9 flex items-center justify-center text-purple-600 border border-purple-400 bg-white rounded-lg hover:bg-purple-600 hover:text-white transition-all shadow-sm"
                         >
                           <Icon icon="stash:chart-trend-up" width={18} />
-                        </button>
-
-                        <button
-                          onClick={() => openDeleteModal(item)}
-                          title="Hapus"
-                          className="w-9 h-9 flex items-center justify-center text-rose-600 border border-rose-300 bg-white rounded-lg hover:bg-rose-600 hover:text-white transition-all shadow-sm"
-                        >
-                          <Icon icon="mdi:trash-outline" width={18} />
                         </button>
                       </div>
                     </td>
@@ -798,7 +790,7 @@ export default function Index() {
 
                 <div className="flex gap-2 pt-1">
                   <button
-                    onClick={() => navigate(`/content/${item.id}/analytic`)}
+                    onClick={() => navigate(`/konten/${item.id}/analytic`)}
                     className="flex-1 bg-purple-100 text-purple-700 py-2.5 rounded-lg flex items-center justify-center transition-colors"
                   >
                     <Icon icon="stash:chart-trend-up" width={20} />
@@ -806,7 +798,7 @@ export default function Index() {
                   </button>
 
                   <button
-                    onClick={() => navigate(`/content/${item.id}`)}
+                    onClick={() => navigate(`/konten/${item.id}`)}
                     className="flex-1 bg-blue-100 text-blue-700 py-2.5 rounded-lg flex items-center justify-center transition-colors"
                   >
                     <Icon icon="si:eye-line" width={18} />
@@ -900,7 +892,7 @@ export default function Index() {
                   key={item.id}
                   onClick={() => {
                     setShowLateModal(false);
-                    navigate(`/content/${item.id}`);
+                    navigate(`/konten/${item.id}`);
                   }}
                   className="border rounded-lg p-3 hover:bg-orange-50 cursor-pointer transition"
                 >

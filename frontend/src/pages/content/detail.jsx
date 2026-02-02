@@ -314,7 +314,7 @@ export default function DetailContent() {
         </div>
 
         <button
-          onClick={() => navigate(`/content/${id}/edit`)}
+          onClick={() => navigate(`/konten/${id}/edit`)}
           className="
               absolute right-0
               top-1/2 -translate-y-1/2
@@ -496,7 +496,7 @@ export default function DetailContent() {
 
       <div className="flex justify-end mt-10 pb-4">
         <button
-          onClick={() => navigate("/content")}
+          onClick={() => navigate("/konten")}
           className="px-5 py-2.5 bg-slate-200 rounded-lg"
         >
           Kembali

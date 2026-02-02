@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Helpers\ActivityLogger;
 use App\Models\ApkItem;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class ApkItemController extends Controller
@@ -22,10 +24,15 @@ class ApkItemController extends Controller
 
     public function index(Request $request)
     {
-        $user = auth()->user();
+        /** @var User|null $user */
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['status' => false, 'message' => 'Unauthorized'], 401);
+        }
+
         $paslonId = $this->adminApkPaslonId($user->id);
         if (!$paslonId) {
-            return response()->json(['status'=>false,'message'=>'Paslon tidak ditemukan'], 403);
+            return response()->json(['status' => false, 'message' => 'Paslon tidak ditemukan'], 403);
         }
 
         $query = ApkItem::query()
@@ -63,15 +70,18 @@ class ApkItemController extends Controller
             'is_active' => 'nullable|boolean',
         ]);
 
-        $user = auth()->user();
-        $paslonId = $this->adminApkPaslonId($user->id);
-        if (!$paslonId) {
-            return response()->json(['status'=>false,'message'=>'Paslon tidak ditemukan'], 403);
+        /** @var User|null $user */
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['status' => false, 'message' => 'Unauthorized'], 401);
         }
 
-        $item = null;
+        $paslonId = $this->adminApkPaslonId($user->id);
+        if (!$paslonId) {
+            return response()->json(['status' => false, 'message' => 'Paslon tidak ditemukan'], 403);
+        }
 
-        DB::transaction(function () use ($request, $user, $paslonId, &$item) {
+        $item = DB::transaction(function () use ($request, $user, $paslonId) {
             $stock = $request->has('stock') ? (float)$request->stock : 0;
             $budget = $request->has('budget_total') ? (float)$request->budget_total : 0;
 
@@ -88,7 +98,6 @@ class ApkItemController extends Controller
                 'is_active' => $request->boolean('is_active', true),
             ]);
 
-            // upsert summary stock
             DB::table('apk_item_stocks')->updateOrInsert(
                 ['item_id' => $item->id],
                 [
@@ -109,6 +118,8 @@ class ApkItemController extends Controller
                 ],
                 'paslon_id' => (int)$paslonId,
             ]);
+
+            return $item;
         });
 
         $item->load(['bentuk:id,name,category', 'unit:id,name,symbol', 'stock:item_id,qty_current,budget_total']);
@@ -132,14 +143,19 @@ class ApkItemController extends Controller
             // sengaja tidak izinkan update stock/budget_total di sini (biar lewat transaksi)
         ]);
 
-        $user = auth()->user();
+        /** @var User|null $user */
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['status' => false, 'message' => 'Unauthorized'], 401);
+        }
+
         $paslonId = $this->adminApkPaslonId($user->id);
         if (!$paslonId) {
-            return response()->json(['status'=>false,'message'=>'Paslon tidak ditemukan'], 403);
+            return response()->json(['status' => false, 'message' => 'Paslon tidak ditemukan'], 403);
         }
 
         if ((int)$apkItem->paslon_id !== (int)$paslonId) {
-            return response()->json(['status'=>false,'message'=>'Forbidden'], 403);
+            return response()->json(['status' => false, 'message' => 'Forbidden'], 403);
         }
 
         $old = $apkItem->getAttributes();
@@ -172,13 +188,19 @@ class ApkItemController extends Controller
 
     public function destroy(ApkItem $apkItem)
     {
-        $user = auth()->user();
+        /** @var User|null $user */
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['status' => false, 'message' => 'Unauthorized'], 401);
+        }
+
         $paslonId = $this->adminApkPaslonId($user->id);
         if (!$paslonId) {
-            return response()->json(['status'=>false,'message'=>'Paslon tidak ditemukan'], 403);
+            return response()->json(['status' => false, 'message' => 'Paslon tidak ditemukan'], 403);
         }
+
         if ((int)$apkItem->paslon_id !== (int)$paslonId) {
-            return response()->json(['status'=>false,'message'=>'Forbidden'], 403);
+            return response()->json(['status' => false, 'message' => 'Forbidden'], 403);
         }
 
         $apkItem->is_active = false;
