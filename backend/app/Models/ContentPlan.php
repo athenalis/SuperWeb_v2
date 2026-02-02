@@ -57,8 +57,7 @@ class ContentPlan extends Model
 
     public function ads()
     {
-        return $this->hasMany(ContentPlatformAd::class, 'content_plan_id')
-            ->withTrashed();
+        return $this->hasMany(ContentPlatformAd::class, 'content_plan_id');
     }
 
     public function getTotalBudgetAttribute()

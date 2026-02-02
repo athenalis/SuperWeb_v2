@@ -16,7 +16,7 @@ use App\Http\Controllers\Api\OrmasController;
 use App\Http\Controllers\Api\SuaraController;
 use App\Http\Controllers\Api\BudgetController;
 use App\Http\Controllers\Api\PaslonController;
-use App\Http\Controllers\ApkRequestController;
+use App\Http\Controllers\Api\ApkRequestController;
 use App\Http\Controllers\Api\ApkItemController;
 use App\Http\Controllers\Api\HistoryController;
 use App\Http\Controllers\Api\RelawanController;
@@ -32,6 +32,7 @@ use App\Http\Controllers\Api\EngagementController;
 use App\Http\Controllers\Api\InfluencerController;
 use App\Http\Controllers\Api\PetaPartaiController;
 use App\Http\Controllers\Api\AdminPaslonController;
+use App\Http\Controllers\Api\ApkBentukController;
 use App\Http\Controllers\Api\ContentPlanController;
 use App\Http\Controllers\Api\ContentTypeController;
 use App\Http\Controllers\Api\CoordinatorController;
@@ -264,10 +265,10 @@ Route::middleware(['auth:sanctum', 'role:admin_apk'])->prefix('apk')->group(func
     Route::delete('/items/{apkItem}', [ApkItemController::class, 'destroy']);
     Route::post('/stock/in', [ApkStockController::class, 'stockIn']);
 
-    Route::get('/bentuk', [ApkItemController::class, 'index']);
-    Route::post('/bentuk', [ApkItemController::class, 'store']);
-    Route::put('/bentuk/{id}', [ApkItemController::class, 'update']);
-    Route::delete('/bentuk/{id}', [ApkItemController::class, 'destroy']);
+    Route::get('/bentuk', [ApkBentukController::class, 'index']);
+    Route::post('/bentuk', [ApkBentukController::class, 'store']);
+    Route::put('/bentuk/{id}', [ApkBentukController::class, 'update']);
+    Route::delete('/bentuk/{id}', [ApkBentukController::class, 'destroy']);
 
     Route::prefix('apk-requests')->group(function () {
         Route::post('/{id}/approve', [ApkRequestController::class, 'approve']);

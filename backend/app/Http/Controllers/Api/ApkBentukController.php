@@ -11,8 +11,38 @@ use Illuminate\Support\Facades\DB;
 
 class ApkBentukController extends Controller
 {
+    private function ensureAdminApk(Request $request): void
+    {
+        if (!$request->user() || (int) $request->user()->role_id !== 3) {
+            abort(403, 'Forbidden');
+        }
+    }
+
+    private function roleSlug(Request $request): string
+    {
+        $slug = DB::table('roles')->where('id', $request->user()->role_id)->value('role');
+        if (!$slug) abort(500, 'Role slug not found in roles table.');
+        return (string) $slug;
+    }
+
+    private function paslonId(Request $request): int
+    {
+        $user = $request->user();
+        $adminApk = $user?->adminApk;
+
+        if (!$adminApk || !$adminApk->paslon_id) {
+            abort(403, 'Admin APK belum terhubung ke paslon.');
+        }
+
+        return (int) $adminApk->paslon_id;
+    }
+
     public function index(Request $request)
     {
+        $this->ensureAdminApk($request);
+
+        $paslonId = $this->paslonId($request);
+
         $q = ApkBentuk::query()
             ->orderBy('category')
             ->orderBy('name');
@@ -22,43 +52,45 @@ class ApkBentukController extends Controller
         }
 
         if ($request->filled('active')) {
-            $q->where('is_active', (int)$request->active);
+            $q->where('is_active', (int) $request->active);
         }
 
         $data = $q->get();
 
-        // HISTORY (log akses list)
         History::create([
             'user_id' => $request->user()->id,
-            'role' => (string)$request->user()->role_id,
+            'role' => $this->roleSlug($request),
             'action' => 'READ',
             'target_type' => 'apk_bentuk',
             'target_name' => 'list',
+            'field' => 'apk_bentuk',
             'meta' => [
+                'paslon_id' => $paslonId,
                 'filters' => [
                     'category' => $request->query('category'),
                     'active' => $request->query('active'),
                 ],
                 'count' => $data->count(),
-            ]
+            ],
+            'paslon_id' => $paslonId,
         ]);
 
         return response()->json(['data' => $data]);
     }
 
-    /**
-     * CREATE BENTUK
-     */
     public function store(Request $request)
     {
+        $this->ensureAdminApk($request);
+
+        $paslonId = $this->paslonId($request);
+
         $data = $request->validate([
             'category' => 'required|in:apk,bahan_kampanye',
             'name' => 'required|string|max:120',
         ]);
 
-        return DB::transaction(function () use ($request, $data) {
+        return DB::transaction(function () use ($request, $data, $paslonId) {
 
-            // cegah duplikat (category + name)
             $dup = ApkBentuk::where('category', $data['category'])
                 ->where('name', $data['name'])
                 ->exists();
@@ -77,39 +109,41 @@ class ApkBentukController extends Controller
 
             History::create([
                 'user_id' => $request->user()->id,
-                'role' => (string)$request->user()->role_id,
+                'role' => $this->roleSlug($request),
                 'action' => 'CREATE',
                 'target_type' => 'apk_bentuk',
                 'target_name' => $bentuk->name,
+                'field' => 'apk_bentuk',
                 'meta' => [
+                    'paslon_id' => $paslonId,
                     'bentuk_id' => $bentuk->id,
                     'category' => $bentuk->category,
                     'name' => $bentuk->name,
                     'is_active' => $bentuk->is_active,
-                ]
+                ],
+                'paslon_id' => $paslonId,
             ]);
 
             return response()->json(['data' => $bentuk], 201);
         });
     }
 
-    /**
-     * UPDATE BENTUK
-     * category tidak boleh diubah
-     */
     public function update(Request $request, $id)
     {
+        $this->ensureAdminApk($request);
+
+        $paslonId = $this->paslonId($request);
+
         $data = $request->validate([
             'name' => 'required|string|max:120',
             'is_active' => 'nullable|boolean',
         ]);
 
-        return DB::transaction(function () use ($request, $id, $data) {
+        return DB::transaction(function () use ($request, $id, $data, $paslonId) {
 
             $bentuk = ApkBentuk::lockForUpdate()->findOrFail($id);
             $before = $bentuk->toArray();
 
-            // cek duplikat name pada category yg sama
             $dup = ApkBentuk::where('category', $bentuk->category)
                 ->where('name', $data['name'])
                 ->where('id', '!=', $bentuk->id)
@@ -124,37 +158,41 @@ class ApkBentukController extends Controller
             $bentuk->name = $data['name'];
 
             if (array_key_exists('is_active', $data)) {
-                $bentuk->is_active = (int)$data['is_active'];
+                $bentuk->is_active = (int) $data['is_active'];
             }
 
             $bentuk->save();
 
             History::create([
                 'user_id' => $request->user()->id,
-                'role' => (string)$request->user()->role_id,
+                'role' => $this->roleSlug($request),
                 'action' => 'UPDATE',
                 'target_type' => 'apk_bentuk',
                 'target_name' => $bentuk->name,
+                'field' => 'apk_bentuk',
+                'old_value' => $before['name'] ?? null,
+                'new_value' => $bentuk->name,
                 'meta' => [
+                    'paslon_id' => $paslonId,
                     'bentuk_id' => $bentuk->id,
                     'before' => $before,
                     'after' => $bentuk->toArray(),
                     'note' => 'category is immutable',
-                ]
+                ],
+                'paslon_id' => $paslonId,
             ]);
 
             return response()->json(['data' => $bentuk]);
         });
     }
 
-    /**
-     * DELETE BENTUK
-     * - kalau masih dipakai item aktif => disable (is_active=0)
-     * - kalau tidak dipakai => hard delete
-     */
     public function destroy(Request $request, $id)
     {
-        return DB::transaction(function () use ($request, $id) {
+        $this->ensureAdminApk($request);
+
+        $paslonId = $this->paslonId($request);
+
+        return DB::transaction(function () use ($request, $id, $paslonId) {
 
             $bentuk = ApkBentuk::lockForUpdate()->findOrFail($id);
 
@@ -170,16 +208,21 @@ class ApkBentukController extends Controller
 
                 History::create([
                     'user_id' => $request->user()->id,
-                    'role' => (string)$request->user()->role_id,
+                    'role' => $this->roleSlug($request),
                     'action' => 'DISABLE',
                     'target_type' => 'apk_bentuk',
                     'target_name' => $bentuk->name,
+                    'field' => 'apk_bentuk',
+                    'old_value' => 1,
+                    'new_value' => 0,
                     'meta' => [
+                        'paslon_id' => $paslonId,
                         'bentuk_id' => $bentuk->id,
                         'before' => $before,
                         'after' => $bentuk->toArray(),
                         'reason' => 'still used by active items',
-                    ]
+                    ],
+                    'paslon_id' => $paslonId,
                 ]);
 
                 return response()->json([
@@ -195,14 +238,17 @@ class ApkBentukController extends Controller
 
             History::create([
                 'user_id' => $request->user()->id,
-                'role' => (string)$request->user()->role_id,
+                'role' => $this->roleSlug($request),
                 'action' => 'DELETE',
                 'target_type' => 'apk_bentuk',
                 'target_name' => $name,
+                'field' => 'apk_bentuk',
                 'meta' => [
+                    'paslon_id' => $paslonId,
                     'bentuk_id' => $id,
                     'before' => $before,
-                ]
+                ],
+                'paslon_id' => $paslonId,
             ]);
 
             return response()->json(['message' => 'Bentuk deleted.']);

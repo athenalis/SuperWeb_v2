@@ -1,15 +1,84 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api;
 
 use App\Models\ApkRequest;
 use App\Models\ApkRequestItem;
 use App\Models\ApkRequestStatus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Http\Controllers\Controller;
 
 class ApkRequestController extends Controller
 {
+    // ✅ LIST - auto filter sesuai role
+    public function index(Request $request)
+    {
+        $user = auth()->user();
+
+        $query = ApkRequest::query()
+            ->with([
+                'status:id,code,name',
+                'items.item',      // kalau mau select field tertentu bisa dioptimasi nanti
+                'items.unit',
+                'coordinator:id,nama,no_hp',
+                'courier:id,nama,no_hp',
+                'admin:id,nama,no_hp',
+            ])
+            ->latest();
+
+        // filter optional by status_code (contoh: ?status=SUBMITTED)
+        if ($request->filled('status')) {
+            $statusCode = $request->status;
+            $query->whereHas('status', fn($q) => $q->where('code', $statusCode));
+        }
+
+        // 🔒 Role filtering
+        if ($user->hasRole('apk_koordinator')) {
+            $coordinator = $user->coordinatorApk;
+            $query->where('coordinator_id', $coordinator->id);
+        } elseif ($user->hasRole('apk_kurir')) {
+            $kurir = $user->courierApk;
+            $query->where('courier_id', $kurir->id);
+        } else {
+            // admin_apk / admin_paslon -> lihat semua (atau kamu bisa filter per paslon_id kalau mau)
+        }
+
+        return response()->json($query->paginate(15));
+    }
+
+    // ✅ DETAIL - auto filter sesuai role
+    public function show($id)
+    {
+        $user = auth()->user();
+
+        $apkRequest = ApkRequest::with([
+            'status:id,code,name',
+            'items.item',
+            'items.unit',
+            'histories.status:id,code,name',
+            'coordinator:id,nama,no_hp,alamat',
+            'courier:id,nama,no_hp',
+            'admin:id,nama,no_hp',
+        ])
+            ->findOrFail($id);
+
+        // 🔒 Authorize by role
+        if ($user->hasRole('apk_koordinator')) {
+            $coordinator = $user->coordinatorApk;
+            abort_if($apkRequest->coordinator_id !== $coordinator->id, 403, 'Tidak punya akses');
+        }
+
+        if ($user->hasRole('apk_kurir')) {
+            $kurir = $user->courierApk;
+            abort_if($apkRequest->courier_id !== $kurir->id, 403, 'Tidak punya akses');
+        }
+
+        // admin_apk/admin_paslon -> allowed
+
+        return response()->json($apkRequest);
+    }
+
     /* =====================================================
        KOORDINATOR
        ===================================================== */
@@ -33,7 +102,7 @@ class ApkRequestController extends Controller
 
             $apkRequest = ApkRequest::create([
                 'coordinator_id'   => $coordinator->id,
-                'current_status_id'=> $statusSubmitted->id,
+                'current_status_id' => $statusSubmitted->id,
                 'revision_no'      => 1,
             ]);
 
@@ -139,7 +208,7 @@ class ApkRequestController extends Controller
     {
         $request->validate([
             'courier_id'    => 'required|exists:apk_kurirs,id',
-            'pickup_address'=> 'required|string',
+            'pickup_address' => 'required|string',
         ]);
 
         $admin = auth()->user()->adminApk;
@@ -155,7 +224,7 @@ class ApkRequestController extends Controller
             $apkRequest->update([
                 'admin_id'      => $admin->id,
                 'courier_id'    => $request->courier_id,
-                'pickup_address'=> $request->pickup_address,
+                'pickup_address' => $request->pickup_address,
             ]);
 
             $apkRequest->setStatusByCode(

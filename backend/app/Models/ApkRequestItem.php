@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Models\ApkItem;
 use Illuminate\Database\Eloquent\Model;
 
 class ApkRequestItem extends Model
@@ -10,11 +9,7 @@ class ApkRequestItem extends Model
     protected $table = 'apk_request_items';
 
     protected $fillable = [
-        'apk_request_id',
-        'item_id',
-        'qty',
-        'unit_id',
-        'note',
+        'apk_request_id','item_id','qty','unit_id','note'
     ];
 
     public function request()
@@ -24,7 +19,7 @@ class ApkRequestItem extends Model
 
     public function item()
     {
-        return $this->belongsTo(ApkItem::class, 'item_id'); // model master item kamu
+        return $this->belongsTo(ApkItem::class, 'item_id'); // master item kamu
     }
 
     public function unit()

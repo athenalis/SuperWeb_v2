@@ -59,6 +59,7 @@ class ContentPlanController extends Controller
                 'budgetWithTrashed:id,content_plan_id,budget_content',
                 'contentPlatforms.platform:id,name',
                 'contentPlatforms.ads',
+                'ads',
             ])
             ->selectRaw("
                 content_plans.*,
@@ -273,7 +274,7 @@ class ContentPlanController extends Controller
             'influencer_ids'   => 'nullable|array',
             'influencer_ids.*' => 'exists:influencers,id',
 
-            'is_ads' => 'boolean',
+            'is_ads' => 'nullable|boolean',
             'ads_by_platform' => 'nullable|array',
             'ads_by_platform.*.start_date' => 'required_with:ads_by_platform|date',
             'ads_by_platform.*.end_date'   => 'required_with:ads_by_platform|date|after_or_equal:ads_by_platform.*.start_date',
@@ -291,6 +292,9 @@ class ContentPlanController extends Controller
 
             $this->validateContentTypes($validated['content_types']);
 
+            // =========================
+            // Update main content plan
+            // =========================
             $contentPlan->update([
                 'title'         => $validated['title'],
                 'posting_date'  => $validated['posting_date'],
@@ -299,6 +303,9 @@ class ContentPlanController extends Controller
                 'refund_budget' => (bool) ($validated['refund_budget'] ?? false),
             ]);
 
+            // =========================
+            // Platforms (reset + insert)
+            // =========================
             ContentPlatform::where('content_plan_id', $id)->delete();
 
             $platformRows = [];
@@ -315,38 +322,65 @@ class ContentPlanController extends Controller
             }
             ContentPlatform::insert($platformRows);
 
+            // =========================
+            // Budget (upsert)
+            // =========================
             ContentBudget::updateOrCreate(
                 ['content_plan_id' => $id],
                 ['budget_content'  => $validated['budget_content']]
             );
 
-            ContentPlatformAd::where('content_plan_id', $id)->delete();
+            // =========================
+            // ADS (HARD DELETE then maybe insert)
+            // rule:
+            // - jika is_ads=false => hapus beneran (forceDelete)
+            // - jika is_ads=true  => hapus dulu, lalu insert dari ads_by_platform
+            // - jika is_ads tidak dikirim:
+            //     - kalau FE tidak mau ngurus ads, dan mau "tanpa ads", kirim is_ads=false
+            //     - kalau tidak dikirim, kita anggap tidak mengubah ads (KEEP)
+            // =========================
+            $isAdsProvided = $request->has('is_ads');
 
-            if ($request->boolean('is_ads') && !empty($validated['ads_by_platform'])) {
-                $adsData = [];
-                foreach ($validated['ads_by_platform'] as $platformId => $ads) {
-                    $adsData[] = [
-                        'content_plan_id' => $id,
-                        'platform_id'     => (int) $platformId,
-                        'is_ads'          => true,
-                        'start_date'      => $ads['start_date'],
-                        'end_date'        => $ads['end_date'],
-                        'budget_ads'      => $ads['budget_ads'],
-                        'created_at'      => now(),
-                        'updated_at'      => now(),
-                    ];
+            if ($isAdsProvided) {
+                $isAds = $request->boolean('is_ads');
+
+                // hapus beneran semua ads lama (termasuk yang sudah trashed)
+                ContentPlatformAd::withTrashed()
+                    ->where('content_plan_id', $id)
+                    ->forceDelete();
+
+                // kalau is_ads true dan ada payload, insert baru
+                if ($isAds && !empty($validated['ads_by_platform'])) {
+                    $adsData = [];
+                    foreach ($validated['ads_by_platform'] as $platformId => $ads) {
+                        $adsData[] = [
+                            'content_plan_id' => $id,
+                            'platform_id'     => (int) $platformId,
+                            'is_ads'          => true,
+                            'start_date'      => $ads['start_date'],
+                            'end_date'        => $ads['end_date'],
+                            'budget_ads'      => $ads['budget_ads'],
+                            'created_at'      => now(),
+                            'updated_at'      => now(),
+                        ];
+                    }
+                    ContentPlatformAd::insert($adsData);
                 }
-                ContentPlatformAd::insert($adsData);
             }
+            // kalau is_ads tidak dikirim => KEEP ads seperti sebelumnya (tidak dihapus)
 
-            // influencers
+            // =========================
+            // Influencers (sync)
+            // =========================
             $contentPlan->influencers()->sync($validated['influencer_ids'] ?? []);
 
-            //refund
+            // =========================
+            // Refund logic (optional)
+            // =========================
             $shouldRefund = ((int) $validated['status_id'] === 5) && ((bool) ($validated['refund_budget'] ?? false));
 
             if ($shouldRefund && !$alreadyRefunded) {
-                // hitung refund pakai data terbaru (include trashed)
+                // hitung refund pakai data terbaru
                 $budgetContent = (float) (ContentBudget::withTrashed()
                     ->where('content_plan_id', $id)
                     ->value('budget_content') ?? 0);
@@ -357,16 +391,14 @@ class ContentPlanController extends Controller
 
                 $refundAmount = $budgetContent + $adsBudget;
 
-                // balikin ke total_budget paslon
                 DB::table('total_budget')
                     ->where('paslon_id', $paslonId)
                     ->increment('amount', $refundAmount);
 
-                // soft delete budget & ads supaya "budget aktif" jadi 0 / null
-                ContentBudget::where('content_plan_id', $id)->delete();
-                ContentPlatformAd::where('content_plan_id', $id)->delete();
+                // kalau kamu mau refund = hapus permanen juga:
+                ContentBudget::withTrashed()->where('content_plan_id', $id)->forceDelete();
+                ContentPlatformAd::withTrashed()->where('content_plan_id', $id)->forceDelete();
 
-                // pastiin flag true (kalau sebelumnya null)
                 $contentPlan->refund_budget = true;
                 $contentPlan->save();
             }
