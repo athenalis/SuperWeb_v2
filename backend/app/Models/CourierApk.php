@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\ApkRequest;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -22,9 +23,9 @@ class CourierApk extends Model
     protected $casts = [
         'user_id'   => 'integer',
         'paslon_id' => 'integer',
-        'deleted_at'=> 'datetime',
-        'created_at'=> 'datetime',
-        'updated_at'=> 'datetime',
+        'deleted_at' => 'datetime',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 
     public function user()
@@ -35,5 +36,10 @@ class CourierApk extends Model
     public function paslon()
     {
         return $this->belongsTo(Paslon::class, 'paslon_id');
+    }
+
+    public function requestsAssigned()
+    {
+        return $this->hasMany(ApkRequest::class, 'courier_id');
     }
 }

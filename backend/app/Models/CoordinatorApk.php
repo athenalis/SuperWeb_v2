@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\ApkRequest;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -53,5 +54,10 @@ class CoordinatorApk extends Model
     public function village()
     {
         return $this->belongsTo(Village::class, 'village_code', 'village_code');
+    }
+
+    public function requests()
+    {
+        return $this->hasMany(ApkRequest::class, 'coordinator_id');
     }
 }

@@ -2,9 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\ApkRequest;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class AdminApk extends Model
 {
@@ -38,5 +39,10 @@ class AdminApk extends Model
     public function paslon()
     {
         return $this->belongsTo(Paslon::class);
+    }
+
+    public function requestsApproved()
+    {
+        return $this->hasMany(ApkRequest::class, 'admin_id');
     }
 }

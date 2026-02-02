@@ -92,6 +92,17 @@ class User extends Authenticatable
         return $this->belongsTo(Role::class);
     }
 
+    public function adminApk()
+    {
+        return $this->hasOne(\App\Models\AdminApk::class, 'user_id', 'id');
+    }
+
+    public function apkKurir()
+    {
+        return $this->hasOne(\App\Models\CourierApk::class, 'user_id', 'id');
+    }
+
+
     public function getRoleNameAttribute()
     {
         return $this->role?->role;
