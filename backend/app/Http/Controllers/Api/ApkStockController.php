@@ -3,119 +3,150 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\ApkItem;
-use App\Models\ApkItemStock;
-use App\Models\ApkStockTransaction;
-use App\Models\History;
+use App\Helpers\ActivityLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 
 class ApkStockController extends Controller
 {
-    private function ensureAdminApk(Request $request): void
+    private function adminApkPaslonId(int $userId): ?int
     {
-        if (!$request->user() || (int) $request->user()->role_id !== 3) {
-            abort(403, 'Forbidden');
-        }
-    }
+        $paslonId = DB::table('admin_apks')
+            ->where('user_id', $userId)
+            ->whereNull('deleted_at')
+            ->value('paslon_id');
 
-    private function roleSlug(Request $request): string
-    {
-        $slug = DB::table('roles')->where('id', $request->user()->role_id)->value('role');
-        if (!$slug) abort(500, 'Role slug not found in roles table.');
-        return (string) $slug;
-    }
-
-    private function paslonId(Request $request): int
-    {
-        $user = $request->user();
-        $adminApk = $user?->adminApk;
-
-        if (!$adminApk || !$adminApk->paslon_id) {
-            abort(403, 'Admin APK belum terhubung ke paslon.');
-        }
-
-        return (int) $adminApk->paslon_id;
+        return $paslonId ? (int)$paslonId : null;
     }
 
     public function stockIn(Request $request)
     {
-        $this->ensureAdminApk($request);
+        return $this->transaction($request, 'IN');
+    }
 
-        $paslonId = $this->paslonId($request);
+    public function stockOut(Request $request)
+    {
+        return $this->transaction($request, 'OUT');
+    }
 
-        $data = $request->validate([
-            'item_id' => 'required|integer|exists:apk_items,id',
-            'qty' => 'required|numeric|gt:0',
-            'total_cost' => 'nullable|numeric|min:0',
+    public function stockAdjust(Request $request)
+    {
+        return $this->transaction($request, 'ADJUST');
+    }
+
+    private function transaction(Request $request, string $type)
+    {
+        $rules = [
+            'item_id' => 'required|integer',
+            'qty' => 'required|numeric|min:0.001',
             'note' => 'nullable|string|max:255',
-        ]);
+        ];
 
-        $qty  = (float) $data['qty'];
-        $cost = (float) ($data['total_cost'] ?? 0);
+        // total_cost cuma relevan untuk IN (budget bertambah)
+        if ($type === 'IN') {
+            $rules['total_cost'] = 'nullable|numeric|min:0';
+        }
 
-        return DB::transaction(function () use ($request, $data, $qty, $cost, $paslonId) {
+        $request->validate($rules);
 
-            $item = ApkItem::lockForUpdate()->findOrFail($data['item_id']);
+        $user = auth()->user();
+        $paslonId = $this->adminApkPaslonId($user->id);
+        if (!$paslonId) {
+            return response()->json(['status'=>false,'message'=>'Paslon tidak ditemukan'], 403);
+        }
 
-            if ((int) $item->paslon_id !== (int) $paslonId) {
-                abort(403, 'Item ini bukan milik paslon kamu.');
+        DB::transaction(function () use ($request, $user, $paslonId, $type) {
+
+            $item = DB::table('apk_items')
+                ->where('id', $request->item_id)
+                ->where('paslon_id', $paslonId)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$item) abort(404, 'Item tidak ditemukan');
+
+            $stockRow = DB::table('apk_item_stocks')
+                ->where('item_id', $request->item_id)
+                ->lockForUpdate()
+                ->first();
+
+            $qtyBefore = (float)($stockRow?->qty_current ?? 0);
+            $budgetBefore = (float)($stockRow?->budget_total ?? 0);
+
+            $qty = (float)$request->qty;
+
+            if ($type === 'OUT' && $qtyBefore < $qty) {
+                abort(422, 'Stock tidak cukup');
             }
 
-            $beforeStock  = (float) $item->stock;
-            $beforeBudget = (float) $item->budget_total;
+            $qtyAfter = match ($type) {
+                'IN' => $qtyBefore + $qty,
+                'OUT' => $qtyBefore - $qty,
+                'ADJUST' => $qty, // set langsung
+                default => abort(422, 'Type tidak valid'),
+            };
 
-            ApkStockTransaction::create([
-                'paslon_id' => $item->paslon_id,
-                'item_id' => $item->id,
-                'type' => 'IN',
+            // budget bertambah hanya saat IN
+            $budgetAdd = 0.0;
+            if ($type === 'IN') {
+                $budgetAdd = $request->total_cost !== null ? max(0.0, (float)$request->total_cost) : 0.0;
+            }
+
+            $budgetAfter = $budgetBefore + $budgetAdd;
+
+            // 1) simpan transaksi
+            DB::table('apk_stock_transactions')->insert([
+                'paslon_id' => $paslonId,
+                'item_id' => $request->item_id,
+                'type' => $type,
                 'qty' => $qty,
-                'total_cost' => $cost,
-                'note' => $data['note'] ?? null,
-                'created_by' => $request->user()->id,
+                'note' => $request->note,
+                'total_cost' => ($type === 'IN' && $budgetAdd > 0) ? $budgetAdd : null,
+                'created_by' => $user->id,
                 'created_at' => now(),
             ]);
 
-            $item->update([
-                'stock' => $beforeStock + $qty,
-                'budget_total' => $beforeBudget + $cost,
-            ]);
-
-            $stock = ApkItemStock::firstOrCreate(
-                ['item_id' => $item->id],
-                ['qty_current' => 0, 'budget_total' => 0]
+            // 2) update ringkasan
+            DB::table('apk_item_stocks')->updateOrInsert(
+                ['item_id' => $request->item_id],
+                [
+                    'qty_current' => $qtyAfter,
+                    'budget_total' => $budgetAfter,
+                    'updated_at' => now(),
+                ]
             );
 
-            $stock->update([
-                'qty_current' => (float) $stock->qty_current + $qty,
-                'budget_total' => (float) $stock->budget_total + $cost,
+            // 3) sync ke apk_items (ini yang kamu minta: stock & budget berubah)
+            DB::table('apk_items')->where('id', $request->item_id)->update([
+                'stock' => $qtyAfter,
+                'budget_total' => $budgetAfter,
+                'updated_at' => now(),
             ]);
 
-            History::create([
-                'user_id' => $request->user()->id,
-                'role' => $this->roleSlug($request),
-                'action' => 'STOCK_IN',
+            // 4) history transaksi
+            ActivityLogger::log([
+                'action' => 'CREATE',
                 'target_type' => 'apk_stock',
                 'target_name' => $item->name,
-                'field' => 'apk_stock',
                 'meta' => [
-                    'paslon_id' => $paslonId,
-                    'item_id' => $item->id,
-                    'qty_added' => $qty,
-                    'cost_added' => $cost,
-                    'stock_before' => $beforeStock,
-                    'stock_after' => (float) $item->stock,
-                    'budget_before' => $beforeBudget,
-                    'budget_after' => (float) $item->budget_total,
-                    'note' => $data['note'] ?? null,
+                    'item_id' => $request->item_id,
+                    'type' => $type,
+                    'qty' => (string)$qty,
+                    'qty_before' => (string)$qtyBefore,
+                    'qty_after' => (string)$qtyAfter,
+                    'budget_add' => (string)$budgetAdd,
+                    'budget_before' => (string)$budgetBefore,
+                    'budget_after' => (string)$budgetAfter,
+                    'note' => $request->note,
                 ],
-                'paslon_id' => $paslonId,
+                'paslon_id' => (int)$paslonId,
             ]);
-
-            return response()->json([
-                'message' => 'Stock added',
-                'data' => $item
-            ], 201);
         });
+
+        return response()->json([
+            'status' => true,
+            'message' => "Transaksi stock {$type} berhasil",
+        ]);
     }
 }

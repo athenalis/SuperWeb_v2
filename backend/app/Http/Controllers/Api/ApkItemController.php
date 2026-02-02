@@ -3,209 +3,198 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Helpers\ActivityLogger;
 use App\Models\ApkItem;
-use App\Models\ApkItemStock;
-use App\Models\ApkStockTransaction;
-use App\Models\History;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class ApkItemController extends Controller
 {
-    private function ensureAdminApk(Request $request): void
+    private function adminApkPaslonId(int $userId): ?int
     {
-        if (!$request->user() || (int) $request->user()->role_id !== 3) {
-            abort(403, 'Forbidden: only admin_apk can access this.');
-        }
-    }
+        $paslonId = DB::table('admin_apks')
+            ->where('user_id', $userId)
+            ->whereNull('deleted_at')
+            ->value('paslon_id');
 
-    private function roleSlug(Request $request): string
-    {
-        $slug = DB::table('roles')->where('id', $request->user()->role_id)->value('role');
-        if (!$slug) abort(500, 'Role slug not found in roles table.');
-        return (string) $slug;
-    }
-
-    private function paslonId(Request $request): int
-    {
-        $user = $request->user();
-        $adminApk = $user?->adminApk; // relasi: User::adminApk()
-
-        if (!$adminApk || !$adminApk->paslon_id) {
-            abort(403, 'Admin APK belum terhubung ke paslon.');
-        }
-
-        return (int) $adminApk->paslon_id;
+        return $paslonId ? (int)$paslonId : null;
     }
 
     public function index(Request $request)
     {
-        $this->ensureAdminApk($request);
+        $user = auth()->user();
+        $paslonId = $this->adminApkPaslonId($user->id);
+        if (!$paslonId) {
+            return response()->json(['status'=>false,'message'=>'Paslon tidak ditemukan'], 403);
+        }
 
-        $paslonId = $this->paslonId($request);
+        $query = ApkItem::query()
+            ->where('paslon_id', $paslonId)
+            ->with(['bentuk:id,name,category', 'unit:id,name,symbol', 'stock:item_id,qty_current,budget_total'])
+            ->orderByDesc('id');
+
+        if ($request->filled('is_active')) {
+            $query->where('is_active', (int)$request->is_active);
+        }
+        if ($request->filled('bentuk_id')) {
+            $query->where('bentuk_id', (int)$request->bentuk_id);
+        }
+        if ($request->filled('search')) {
+            $kw = $request->search;
+            $query->where('name', 'like', "%{$kw}%");
+        }
 
         return response()->json([
-            'data' => ApkItem::with(['bentuk', 'unit'])
-                ->where('is_active', 1)
-                ->where('paslon_id', $paslonId)
-                ->orderByDesc('id')
-                ->paginate(20)
+            'status' => true,
+            'data' => $query->get(),
         ]);
     }
 
     public function store(Request $request)
     {
-        $this->ensureAdminApk($request);
-
-        $data = $request->validate([
+        $request->validate([
             'bentuk_id' => 'required|integer|exists:apk_bentuks,id',
-            'unit_id'   => 'required|integer|exists:units,id',
-            'name'      => 'required|string|max:180',
-
-            'initial_stock'  => 'nullable|numeric|min:0',
-            'initial_budget' => 'nullable|numeric|min:0',
-
+            'name' => 'required|string|max:180',
+            'unit_id' => 'required|integer|exists:units,id',
+            'stock' => 'nullable|numeric|min:0',
+            'budget_total' => 'nullable|numeric|min:0',
             'budget_note' => 'nullable|string|max:255',
             'description' => 'nullable|string',
+            'is_active' => 'nullable|boolean',
         ]);
 
-        $initialStock  = (float) ($data['initial_stock'] ?? 0);
-        $initialBudget = (float) ($data['initial_budget'] ?? 0);
+        $user = auth()->user();
+        $paslonId = $this->adminApkPaslonId($user->id);
+        if (!$paslonId) {
+            return response()->json(['status'=>false,'message'=>'Paslon tidak ditemukan'], 403);
+        }
 
-        return DB::transaction(function () use ($request, $data, $initialStock, $initialBudget) {
+        $item = null;
 
-            $paslonId = $this->paslonId($request);
+        DB::transaction(function () use ($request, $user, $paslonId, &$item) {
+            $stock = $request->has('stock') ? (float)$request->stock : 0;
+            $budget = $request->has('budget_total') ? (float)$request->budget_total : 0;
 
             $item = ApkItem::create([
                 'paslon_id' => $paslonId,
-                'bentuk_id' => $data['bentuk_id'],
-                'unit_id'   => $data['unit_id'],
-                'name'      => $data['name'],
-
-                // ⚠️ HAPUS user_id karena kolomnya tidak ada di tabel apk_items
-                // 'user_id' => $request->user()->id,
-
-                'stock' => $initialStock,
-                'budget_total' => $initialBudget,
-
-                'budget_note' => $data['budget_note'] ?? null,
-                'description' => $data['description'] ?? null,
-                'is_active' => 1,
+                'bentuk_id' => $request->bentuk_id,
+                'name' => $request->name,
+                'unit_id' => $request->unit_id,
+                'user_id' => $user->id,
+                'stock' => $stock,                 // default 0
+                'budget_total' => $budget,          // default 0
+                'budget_note' => $request->budget_note,
+                'description' => $request->description,
+                'is_active' => $request->boolean('is_active', true),
             ]);
 
-            // sync stock summary
-            ApkItemStock::updateOrCreate(
+            // upsert summary stock
+            DB::table('apk_item_stocks')->updateOrInsert(
                 ['item_id' => $item->id],
-                ['qty_current' => $initialStock, 'budget_total' => $initialBudget]
+                [
+                    'qty_current' => $stock,
+                    'budget_total' => $budget,
+                    'updated_at' => now(),
+                ]
             );
 
-            // catat initial stock sebagai transaksi IN
-            if ($initialStock > 0 || $initialBudget > 0) {
-                ApkStockTransaction::create([
-                    'paslon_id' => $item->paslon_id,
-                    'item_id' => $item->id,
-                    'type' => 'IN',
-                    'qty' => $initialStock,
-                    'total_cost' => $initialBudget,
-                    'note' => 'Initial stock',
-                    'created_by' => $request->user()->id,
-                    'created_at' => now(),
-                ]);
-            }
-
-            // HISTORY
-            History::create([
-                'user_id' => $request->user()->id,
-                'role' => $this->roleSlug($request),
+            ActivityLogger::log([
                 'action' => 'CREATE',
                 'target_type' => 'apk_item',
                 'target_name' => $item->name,
-                'field' => 'apk_item',
                 'meta' => [
-                    'paslon_id' => $paslonId,
                     'item_id' => $item->id,
-                    'bentuk_id' => $item->bentuk_id,
-                    'unit_id' => $item->unit_id,
-                    'initial_stock' => $initialStock,
-                    'initial_budget' => $initialBudget,
+                    'stock_awal' => (string)$stock,
+                    'budget_awal' => (string)$budget,
                 ],
-                'paslon_id' => $paslonId,
+                'paslon_id' => (int)$paslonId,
             ]);
-
-            return response()->json(['data' => $item], 201);
         });
+
+        $item->load(['bentuk:id,name,category', 'unit:id,name,symbol', 'stock:item_id,qty_current,budget_total']);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Barang berhasil ditambahkan',
+            'data' => $item,
+        ], 201);
     }
 
     public function update(Request $request, ApkItem $apkItem)
     {
-        $this->ensureAdminApk($request);
-
-        $paslonId = $this->paslonId($request);
-        if ((int) $apkItem->paslon_id !== (int) $paslonId) {
-            abort(403, 'Item ini bukan milik paslon kamu.');
-        }
-
-        $data = $request->validate([
-            'bentuk_id' => 'sometimes|integer|exists:apk_bentuks,id',
-            'unit_id'   => 'sometimes|integer|exists:units,id',
-            'name'      => 'sometimes|string|max:180',
+        $request->validate([
+            'bentuk_id' => 'nullable|integer|exists:apk_bentuks,id',
+            'name' => 'nullable|string|max:180',
+            'unit_id' => 'nullable|integer|exists:units,id',
             'budget_note' => 'nullable|string|max:255',
             'description' => 'nullable|string',
-            'is_active' => 'sometimes|boolean',
+            'is_active' => 'nullable|boolean',
+            // sengaja tidak izinkan update stock/budget_total di sini (biar lewat transaksi)
         ]);
 
-        return DB::transaction(function () use ($request, $apkItem, $data, $paslonId) {
+        $user = auth()->user();
+        $paslonId = $this->adminApkPaslonId($user->id);
+        if (!$paslonId) {
+            return response()->json(['status'=>false,'message'=>'Paslon tidak ditemukan'], 403);
+        }
 
-            $before = $apkItem->toArray();
-            $apkItem->update($data);
+        if ((int)$apkItem->paslon_id !== (int)$paslonId) {
+            return response()->json(['status'=>false,'message'=>'Forbidden'], 403);
+        }
 
-            History::create([
-                'user_id' => $request->user()->id,
-                'role' => $this->roleSlug($request),
-                'action' => 'UPDATE',
-                'target_type' => 'apk_item',
-                'target_name' => $apkItem->name,
-                'field' => 'apk_item',
-                'meta' => [
-                    'paslon_id' => $paslonId,
-                    'before' => $before,
-                    'after' => $apkItem->toArray(),
-                ],
-                'paslon_id' => $paslonId,
-            ]);
+        $old = $apkItem->getAttributes();
 
-            return response()->json(['data' => $apkItem]);
-        });
+        $apkItem->fill($request->only(['bentuk_id','name','unit_id','budget_note','description','is_active']));
+        $apkItem->save();
+
+        foreach (['bentuk_id','name','unit_id','budget_note','description','is_active'] as $field) {
+            if (array_key_exists($field, $request->all()) && (string)($old[$field] ?? '') !== (string)($apkItem->$field ?? '')) {
+                ActivityLogger::log([
+                    'action' => 'UPDATE',
+                    'target_type' => 'apk_item',
+                    'target_name' => $apkItem->name,
+                    'field' => $field,
+                    'old_value' => $old[$field] ?? null,
+                    'new_value' => $apkItem->$field,
+                    'paslon_id' => (int)$paslonId,
+                ]);
+            }
+        }
+
+        $apkItem->load(['bentuk:id,name,category', 'unit:id,name,symbol', 'stock:item_id,qty_current,budget_total']);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Barang berhasil diperbarui',
+            'data' => $apkItem,
+        ]);
     }
 
-    public function destroy(Request $request, ApkItem $apkItem)
+    public function destroy(ApkItem $apkItem)
     {
-        $this->ensureAdminApk($request);
+        $user = auth()->user();
+        $paslonId = $this->adminApkPaslonId($user->id);
+        if (!$paslonId) {
+            return response()->json(['status'=>false,'message'=>'Paslon tidak ditemukan'], 403);
+        }
+        if ((int)$apkItem->paslon_id !== (int)$paslonId) {
+            return response()->json(['status'=>false,'message'=>'Forbidden'], 403);
+        }
 
-        return DB::transaction(function () use ($request, $apkItem) {
+        $apkItem->is_active = false;
+        $apkItem->save();
 
-            $paslonId = $this->paslonId($request);
-            if ((int) $apkItem->paslon_id !== (int) $paslonId) {
-                abort(403, 'Item ini bukan milik paslon kamu.');
-            }
+        ActivityLogger::log([
+            'action' => 'DELETE',
+            'target_type' => 'apk_item',
+            'target_name' => $apkItem->name,
+            'meta' => ['hard_delete' => false, 'item_id' => $apkItem->id],
+            'paslon_id' => (int)$paslonId,
+        ]);
 
-            $apkItem->update(['is_active' => 0]);
-
-            History::create([
-                'user_id' => $request->user()->id,
-                'role' => $this->roleSlug($request),
-                'action' => 'DELETE',
-                'target_type' => 'apk_item',
-                'target_name' => $apkItem->name,
-                'field' => 'apk_item',
-                'meta' => [
-                    'paslon_id' => $paslonId,
-                    'item_id' => $apkItem->id
-                ],
-                'paslon_id' => $paslonId,
-            ]);
-
-            return response()->json(['message' => 'Item deleted']);
-        });
+        return response()->json([
+            'status' => true,
+            'message' => 'Barang berhasil dinonaktifkan',
+        ]);
     }
 }

@@ -435,7 +435,7 @@ class ContentPlanController extends Controller
         }
     }
 
-    public function contentSummary()
+        public function contentSummary()
     {
         $paslonId = $this->currentPaslonId();
         $cacheKey = "content_summary_{$paslonId}";
