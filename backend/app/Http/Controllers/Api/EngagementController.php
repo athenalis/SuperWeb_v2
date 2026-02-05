@@ -134,20 +134,42 @@ class EngagementController extends Controller
     {
         $validated = $request->validate([
             'content_platform_id' => 'required|exists:content_platforms,id',
-            'start_date' => 'required|date',
-            'end_date' => 'required|date|after_or_equal:start_date',
-            'likes' => 'required|integer|min:0',
-            'views' => 'required|integer|min:0',
+            'start_date'          => 'required|date',
+            'end_date'            => 'required|date|after_or_equal:start_date',
+            'likes'               => 'required|integer|min:0',
+            'views'               => 'required|integer|min:0',
         ]);
 
-        $cp = ContentPlatform::where('id', $validated['content_platform_id'])
+        // Pastikan content_platform_id memang milik content plan ini + ambil posting_date
+        $cp = ContentPlatform::with('contentPlan:id,posting_date')
+            ->where('id', $validated['content_platform_id'])
             ->where('content_plan_id', $contentPlanId)
             ->firstOrFail();
 
+        $postingDate = optional($cp->contentPlan)->posting_date; // cast => Carbon (date)
+
+        if (!$postingDate) {
+            return response()->json([
+                'message' => 'Posting date belum diset pada content plan'
+            ], 422);
+        }
+
+        $start = \Carbon\Carbon::parse($validated['start_date'])->startOfDay();
+        $end   = \Carbon\Carbon::parse($validated['end_date'])->startOfDay();
+        $post  = \Carbon\Carbon::parse($postingDate)->startOfDay();
+
+        // ✅ RULE BARU: start/end tidak boleh < posting_date
+        if ($start->lt($post) || $end->lt($post)) {
+            return response()->json([
+                'message' => "Start date dan End date tidak boleh sebelum tanggal posting ({$post->format('Y-m-d')})"
+            ], 422);
+        }
+
+        // 🔒 Validasi overlap periode tanggal
         $hasOverlap = $this->checkOverlap(
             $cp->id,
-            $validated['start_date'],
-            $validated['end_date']
+            $start->format('Y-m-d'),
+            $end->format('Y-m-d')
         );
 
         if ($hasOverlap) {
@@ -160,14 +182,14 @@ class EngagementController extends Controller
         try {
             $engagement = Engagement::create([
                 'content_platform_id' => $cp->id,
-                'start_date' => $validated['start_date'],
-                'end_date' => $validated['end_date'],
-                'likes' => $validated['likes'],
-                'views' => $validated['views'],
+                'start_date'          => $start->format('Y-m-d'),
+                'end_date'            => $end->format('Y-m-d'),
+                'likes'               => $validated['likes'],
+                'views'               => $validated['views'],
             ]);
 
-            // Clear cache setelah insert
-            $this->clearAnalyticCache($contentPlanId);
+            // 🧹 Clear cache setelah insert
+            $this->clearAnalyticCache((int) $contentPlanId);
 
             DB::commit();
 
@@ -195,26 +217,45 @@ class EngagementController extends Controller
     {
         $validated = $request->validate([
             'start_date' => 'required|date',
-            'end_date' => 'required|date|after_or_equal:start_date',
-            'likes' => 'required|integer|min:0',
-            'views' => 'required|integer|min:0',
+            'end_date'   => 'required|date|after_or_equal:start_date',
+            'likes'      => 'required|integer|min:0',
+            'views'      => 'required|integer|min:0',
         ]);
 
-        $engagement = Engagement::with('contentPlatform:id,content_plan_id')
+        $engagement = Engagement::with('contentPlatform.contentPlan:id,posting_date')
             ->findOrFail($engagementId);
 
         $cp = $engagement->contentPlatform;
 
         // 🔒 Pastikan engagement milik content plan ini
-        if ($cp->content_plan_id !== (int) $contentPlanId) {
+        if (!$cp || $cp->content_plan_id !== (int) $contentPlanId) {
             abort(404);
         }
 
-        // 🔒 VALIDASI OVERLAP TANGGAL
+        $postingDate = optional($cp->contentPlan)->posting_date;
+
+        if (!$postingDate) {
+            return response()->json([
+                'message' => 'Posting date belum diset pada content plan'
+            ], 422);
+        }
+
+        $start = \Carbon\Carbon::parse($validated['start_date'])->startOfDay();
+        $end   = \Carbon\Carbon::parse($validated['end_date'])->startOfDay();
+        $post  = \Carbon\Carbon::parse($postingDate)->startOfDay();
+
+        // ✅ RULE BARU: start/end tidak boleh < posting_date
+        if ($start->lt($post) || $end->lt($post)) {
+            return response()->json([
+                'message' => "Start date dan End date tidak boleh sebelum tanggal posting ({$post->format('Y-m-d')})"
+            ], 422);
+        }
+
+        // 🔒 VALIDASI OVERLAP TANGGAL (exclude dirinya sendiri)
         $hasOverlap = $this->checkOverlap(
             $cp->id,
-            $validated['start_date'],
-            $validated['end_date'],
+            $start->format('Y-m-d'),
+            $end->format('Y-m-d'),
             $engagement->id
         );
 
@@ -230,15 +271,15 @@ class EngagementController extends Controller
 
         // ⬅️ Periode SEBELUMNYA
         $previousEngagement = Engagement::where('content_platform_id', $cp->id)
-            ->where('end_date', '<', $validated['start_date'])
+            ->where('end_date', '<', $start->format('Y-m-d'))
             ->where('id', '!=', $engagement->id)
             ->orderBy('end_date', 'desc')
             ->first();
 
         if ($previousEngagement) {
             if (
-                $validated['views'] < $previousEngagement->views ||
-                $validated['likes'] < $previousEngagement->likes
+                (int)$validated['views'] < (int)$previousEngagement->views ||
+                (int)$validated['likes'] < (int)$previousEngagement->likes
             ) {
                 return response()->json([
                     'message' =>
@@ -253,15 +294,15 @@ class EngagementController extends Controller
 
         // ➡️ Periode SETELAHNYA
         $nextEngagement = Engagement::where('content_platform_id', $cp->id)
-            ->where('start_date', '>', $validated['end_date'])
+            ->where('start_date', '>', $end->format('Y-m-d'))
             ->where('id', '!=', $engagement->id)
             ->orderBy('start_date', 'asc')
             ->first();
 
         if ($nextEngagement) {
             if (
-                $validated['views'] > $nextEngagement->views ||
-                $validated['likes'] > $nextEngagement->likes
+                (int)$validated['views'] > (int)$nextEngagement->views ||
+                (int)$validated['likes'] > (int)$nextEngagement->likes
             ) {
                 return response()->json([
                     'message' =>
@@ -281,14 +322,14 @@ class EngagementController extends Controller
         DB::beginTransaction();
         try {
             $engagement->update([
-                'start_date' => $validated['start_date'],
-                'end_date' => $validated['end_date'],
-                'likes' => $validated['likes'],
-                'views' => $validated['views'],
+                'start_date' => $start->format('Y-m-d'),
+                'end_date'   => $end->format('Y-m-d'),
+                'likes'      => $validated['likes'],
+                'views'      => $validated['views'],
             ]);
 
             // 🧹 Clear cache analytics
-            $this->clearAnalyticCache($contentPlanId);
+            $this->clearAnalyticCache((int) $contentPlanId);
 
             DB::commit();
 
@@ -311,7 +352,7 @@ class EngagementController extends Controller
             ], 500);
         }
     }
-
+    
     public function getDisabledDates(int $contentPlatformId, ?int $excludeEngagementId = null)
     {
         // Cache untuk 5 menit per content platform

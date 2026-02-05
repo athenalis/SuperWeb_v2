@@ -12,6 +12,7 @@ use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithColumnFormatting;
 use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 
 class KoordinatorKunjunganExport implements
     FromCollection,
@@ -34,14 +35,11 @@ class KoordinatorKunjunganExport implements
 
     public function startCell(): string
     {
-        // mirip relawan export: admin start A1
         return 'A1';
     }
 
     public function collection()
     {
-        // NOTE: sesuaikan nama tabel jika di DB kamu adalah "coordinator_visits" bukan "kunjungan_koordinators".
-        // Kamu sebelumnya pakai kunjungan_koordinators, jadi aku ikutin itu.
         $rows = DB::table('kunjungan_koordinators as k')
             ->leftJoin('users as u', 'u.id', '=', 'k.user_id')
             ->leftJoin('villages as v', 'v.village_code', '=', 'k.village_code')
@@ -54,6 +52,7 @@ class KoordinatorKunjunganExport implements
             ->whereNotNull('k.user_id')
             ->select([
                 'k.nama as nama',
+                DB::raw('COALESCE(k.nik, u.nik) as nik'),
                 'u.email as email',
                 'uc.encrypted_password as encrypted_password',
                 'k.no_hp as no_hp',
@@ -73,11 +72,20 @@ class KoordinatorKunjunganExport implements
                 }
             }
 
+            // ✅ Paksa NIK jadi string digit (biar tidak kebaca angka)
+            $nik = (string) ($row->nik ?? '');
+            $nik = preg_replace('/\D+/', '', $nik) ?: '-';
+
+            // ✅ No HP juga string digit (optional, tapi aman)
+            $noHp = (string) ($row->no_hp ?? '');
+            $noHp = preg_replace('/\D+/', '', $noHp) ?: '-';
+
             return [
                 $row->nama ?? '-',
+                $nik,
                 $row->email ?? '-',
                 $password,
-                (string) ($row->no_hp ?? '-'),  // WAJIB STRING
+                $noHp,
                 $row->kelurahan ?? '-',
                 $row->alamat ?? '-',
             ];
@@ -86,14 +94,14 @@ class KoordinatorKunjunganExport implements
 
     public function headings(): array
     {
-        return ['Nama', 'Email', 'Password', 'No HP', 'Kelurahan', 'Alamat'];
+        return ['Nama', 'NIK', 'Email', 'Password', 'No HP', 'Kelurahan', 'Alamat'];
     }
 
     public function columnFormats(): array
     {
-        // No HP kolom D
         return [
-            'D' => NumberFormat::FORMAT_TEXT,
+            'B' => NumberFormat::FORMAT_TEXT, // NIK
+            'E' => NumberFormat::FORMAT_TEXT, // No HP
         ];
     }
 
@@ -101,11 +109,26 @@ class KoordinatorKunjunganExport implements
     {
         return [
             AfterSheet::class => function (AfterSheet $event) {
-                $event->sheet->getStyle('A1:F1')->getFont()->setBold(true);
-                $event->sheet->getStyle('A:F')->getAlignment()->setWrapText(true);
+                // styling lama tetap
+                $event->sheet->getStyle('A1:G1')->getFont()->setBold(true);
+                $event->sheet->getStyle('A:G')->getAlignment()->setWrapText(true);
 
-                // Optional: info paslon di baris atas (kalau kamu mau seperti relawan)
-                // Tapi karena startCell A1, kita tidak bikin row tambahan biar simpel.
+                // ✅ Mekanisme relawan: paksa kolom NIK & No HP benar-benar text (anti E+15)
+                $sheet = $event->sheet->getDelegate();
+                $highestRow = $sheet->getHighestRow();
+
+                // Set format kolom text (double safety)
+                $sheet->getStyle("B2:B{$highestRow}")->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
+                $sheet->getStyle("E2:E{$highestRow}")->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
+
+                // Paksa value explicit string (yang biasanya dipakai di relawan export)
+                for ($row = 2; $row <= $highestRow; $row++) {
+                    $nikVal = (string) $sheet->getCell("B{$row}")->getValue();
+                    $hpVal  = (string) $sheet->getCell("E{$row}")->getValue();
+
+                    $sheet->setCellValueExplicit("B{$row}", $nikVal, DataType::TYPE_STRING);
+                    $sheet->setCellValueExplicit("E{$row}", $hpVal, DataType::TYPE_STRING);
+                }
             },
         ];
     }

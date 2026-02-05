@@ -17,7 +17,11 @@ const getRoleDefaultPath = (roleId) => {
     case 3: return "/apk";
     case 4: return "/relawan";
     case 5: return "/apk";
-    case 6: return "/kunjungan";
+    case 6: {
+      // Relawan: cek is_apk flag untuk menentukan default path
+      const isApk = localStorage.getItem("is_apk") === "1";
+      return isApk ? "/relawan/apk/pasangapk" : "/kunjungan";
+    }
     case 7: return "/apk";
     default: return "/dashboard"; // Fallback ke dashboard, bukan login
   }

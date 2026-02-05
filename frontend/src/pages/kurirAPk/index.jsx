@@ -1,181 +1,205 @@
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@iconify/react";
-import Navbar from "../../components/Navbar";
+import toast from "react-hot-toast";
+import api from "../../lib/axios";
 
 /**
- * DUMMY DATA - Kurir APK (Alat Peraga Kampanye)
- * Halaman untuk mengelola pengiriman dan distribusi APK
+ * Manajemen Kurir APK (Alat Peraga Kampanye)
+ * - Hanya untuk role admin_apk
+ * - CRUD Kurir APK
+ * - Tanpa fitur pengiriman
  */
-const dummyKurir = [
-    {
-        id: 1,
-        nama: "Ahmad Fadli",
-        telepon: "081234567890",
-        area: "Jakarta Pusat",
-        status: "aktif",
-        totalPengiriman: 156,
-        rating: 4.8,
-        foto: "https://placehold.co/100x100/3b82f6/white?text=AF",
-    },
-    {
-        id: 2,
-        nama: "Budi Santoso",
-        telepon: "081234567891",
-        area: "Jakarta Selatan",
-        status: "aktif",
-        totalPengiriman: 203,
-        rating: 4.9,
-        foto: "https://placehold.co/100x100/10b981/white?text=BS",
-    },
-    {
-        id: 3,
-        nama: "Citra Dewi",
-        telepon: "081234567892",
-        area: "Jakarta Timur",
-        status: "aktif",
-        totalPengiriman: 178,
-        rating: 4.7,
-        foto: "https://placehold.co/100x100/f59e0b/white?text=CD",
-    },
-    {
-        id: 4,
-        nama: "Dedi Kurnia",
-        telepon: "081234567893",
-        area: "Jakarta Barat",
-        status: "nonaktif",
-        totalPengiriman: 89,
-        rating: 4.5,
-        foto: "https://placehold.co/100x100/8b5cf6/white?text=DK",
-    },
-    {
-        id: 5,
-        nama: "Eka Putri",
-        telepon: "081234567894",
-        area: "Jakarta Utara",
-        status: "aktif",
-        totalPengiriman: 134,
-        rating: 4.6,
-        foto: "https://placehold.co/100x100/ec4899/white?text=EP",
-    },
-];
-
-const dummyPengiriman = [
-    {
-        id: 1,
-        kurir: "Ahmad Fadli",
-        item: "Spanduk Paslon",
-        jumlah: 20,
-        tujuan: "Kec. Menteng",
-        alamat: "Jl. Menteng Raya No. 45",
-        tanggal: "2026-02-02",
-        status: "dikirim",
-    },
-    {
-        id: 2,
-        kurir: "Budi Santoso",
-        item: "Kaos Kampanye",
-        jumlah: 100,
-        tujuan: "Kec. Kemang",
-        alamat: "Jl. Kemang Raya No. 12",
-        tanggal: "2026-02-02",
-        status: "selesai",
-    },
-    {
-        id: 3,
-        kurir: "Citra Dewi",
-        item: "Baliho 3x4m",
-        jumlah: 5,
-        tujuan: "Kec. Cakung",
-        alamat: "Jl. Raya Cakung No. 88",
-        tanggal: "2026-02-01",
-        status: "pending",
-    },
-    {
-        id: 4,
-        kurir: "Ahmad Fadli",
-        item: "Stiker Paslon",
-        jumlah: 500,
-        tujuan: "Kec. Senen",
-        alamat: "Jl. Senen Raya No. 33",
-        tanggal: "2026-02-01",
-        status: "selesai",
-    },
-    {
-        id: 5,
-        kurir: "Eka Putri",
-        item: "Bendera Partai",
-        jumlah: 50,
-        tujuan: "Kec. Kelapa Gading",
-        alamat: "Jl. Boulevard Kelapa Gading",
-        tanggal: "2026-02-01",
-        status: "dikirim",
-    },
-];
 
 export default function KurirApkIndex() {
+    const queryClient = useQueryClient();
+
     const [searchTerm, setSearchTerm] = useState("");
-    const [selectedArea, setSelectedArea] = useState("Semua");
-    const [activeTab, setActiveTab] = useState("kurir"); // kurir atau pengiriman
+    const [filterStatus, setFilterStatus] = useState("Semua");
     const [showModal, setShowModal] = useState(false);
-    const [modalType, setModalType] = useState("tambah-kurir");
+    const [editingKurir, setEditingKurir] = useState(null);
+    const [deleteConfirm, setDeleteConfirm] = useState(null);
 
-    // Statistik
-    const totalKurir = dummyKurir.length;
-    const kurirAktif = dummyKurir.filter((k) => k.status === "aktif").length;
-    const totalPengiriman = dummyPengiriman.length;
-    const pengirimanSelesai = dummyPengiriman.filter((p) => p.status === "selesai").length;
-
-    // Filter
-    const areaList = ["Semua", ...new Set(dummyKurir.map((k) => k.area))];
-
-    const filteredKurir = dummyKurir.filter((k) => {
-        const matchSearch = k.nama.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchArea = selectedArea === "Semua" || k.area === selectedArea;
-        return matchSearch && matchArea;
+    // Form state
+    const [formData, setFormData] = useState({
+        nama: "",
+        no_hp: "",
     });
 
-    const filteredPengiriman = dummyPengiriman.filter((p) => {
-        const matchSearch =
-            p.item.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            p.kurir.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            p.tujuan.toLowerCase().includes(searchTerm.toLowerCase());
-        return matchSearch;
+    // Fetch kurir list
+    const { data: kurirData, isLoading, isError } = useQuery({
+        queryKey: ["kurir-apk", searchTerm, filterStatus],
+        queryFn: async () => {
+            const params = {};
+            if (searchTerm) params.search = searchTerm;
+            if (filterStatus !== "Semua") params.status = filterStatus.toLowerCase();
+            const res = await api.get("/apk-kurir", { params });
+            return res.data;
+        },
     });
+
+    const kurirList = kurirData?.data || [];
+
+    // Stats
+    const totalKurir = kurirList.length;
+    const kurirAktif = kurirList.filter((k) => k.status === "active").length;
+    const totalPengiriman = kurirList.reduce((sum, k) => sum + (k.total_pengiriman || 0), 0);
+    const pengirimanSelesai = kurirList.reduce((sum, k) => sum + (k.pengiriman_selesai || 0), 0);
+
+    // Create mutation
+    const createMutation = useMutation({
+        mutationFn: (data) => api.post("/apk-kurir", data),
+        onSuccess: (res) => {
+            queryClient.invalidateQueries(["apk-kurir"]);
+            toast.success("Kurir berhasil ditambahkan!");
+
+            // Show credentials if available
+            if (res.data?.data?.user) {
+                const { email, password } = res.data.data.user;
+                toast.success(
+                    <div className="text-sm">
+                        <p className="font-bold mb-1">Kredensial Login:</p>
+                        <p>Email: {email}</p>
+                        <p>Password: {password}</p>
+                    </div>,
+                    { duration: 10000 }
+                );
+            }
+
+            resetForm();
+        },
+        onError: (err) => {
+            const msg = err.response?.data?.message || err.response?.data?.errors?.nama?.[0] || "Gagal menambahkan kurir";
+            toast.error(msg);
+        },
+    });
+
+    // Update mutation
+    const updateMutation = useMutation({
+        mutationFn: ({ id, data }) => api.put(`/apk-kurir/${id}`, data),
+        onSuccess: (res) => {
+            queryClient.invalidateQueries(["kurir-apk"]);
+            toast.success("Kurir berhasil diperbarui!");
+
+            // Show new credentials if name changed
+            if (res.data?.data?.user) {
+                const { email, password } = res.data.data.user;
+                toast.success(
+                    <div className="text-sm">
+                        <p className="font-bold mb-1">Kredensial Baru:</p>
+                        <p>Email: {email}</p>
+                        <p>Password: {password}</p>
+                    </div>,
+                    { duration: 10000 }
+                );
+            }
+
+            resetForm();
+        },
+        onError: (err) => {
+            const msg = err.response?.data?.message || "Gagal memperbarui kurir";
+            toast.error(msg);
+        },
+    });
+
+    // Delete mutation
+    const deleteMutation = useMutation({
+        mutationFn: (id) => api.delete(`/apk-kurir/${id}`),
+        onSuccess: () => {
+            queryClient.invalidateQueries(["kurir-apk"]);
+            toast.success("Kurir berhasil dihapus!");
+            setDeleteConfirm(null);
+        },
+        onError: (err) => {
+            const msg = err.response?.data?.message || "Gagal menghapus kurir";
+            toast.error(msg);
+        },
+    });
+
+    const resetForm = () => {
+        setFormData({ nama: "", no_hp: "" });
+        setEditingKurir(null);
+        setShowModal(false);
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+
+        if (!formData.nama.trim()) {
+            return toast.error("Nama kurir wajib diisi");
+        }
+        if (!formData.no_hp.trim()) {
+            return toast.error("No. HP wajib diisi");
+        }
+
+        if (editingKurir) {
+            updateMutation.mutate({
+                id: editingKurir.id,
+                data: formData,
+            });
+        } else {
+            createMutation.mutate(formData);
+        }
+    };
+
+    const openEditModal = (kurir) => {
+        setEditingKurir(kurir);
+        setFormData({
+            nama: kurir.nama || "",
+            no_hp: kurir.no_hp || "",
+        });
+        setShowModal(true);
+    };
+
+    const openCreateModal = () => {
+        resetForm();
+        setShowModal(true);
+    };
 
     const getStatusBadge = (status) => {
         const styles = {
-            aktif: "bg-emerald-100 text-emerald-700 border-emerald-200",
-            nonaktif: "bg-slate-100 text-slate-600 border-slate-200",
-            pending: "bg-yellow-100 text-yellow-700 border-yellow-200",
-            dikirim: "bg-blue-100 text-blue-700 border-blue-200",
-            selesai: "bg-emerald-100 text-emerald-700 border-emerald-200",
+            active: "bg-emerald-100 text-emerald-700 border-emerald-200",
+            inactive: "bg-slate-100 text-slate-600 border-slate-200",
         };
         return styles[status] || "bg-slate-100 text-slate-600 border-slate-200";
     };
 
     const getStatusLabel = (status) => {
         const labels = {
-            aktif: "Aktif",
-            nonaktif: "Nonaktif",
-            pending: "Pending",
-            dikirim: "Dikirim",
-            selesai: "Selesai",
+            active: "Aktif",
+            inactive: "Nonaktif",
         };
         return labels[status] || status;
     };
 
+    const getInitials = (name) => {
+        if (!name) return "?";
+        const words = name.trim().split(" ");
+        if (words.length >= 2) {
+            return (words[0][0] + words[1][0]).toUpperCase();
+        }
+        return name.substring(0, 2).toUpperCase();
+    };
+
+    const getAvatarColor = (name) => {
+        const colors = [
+            "bg-blue-500", "bg-emerald-500", "bg-amber-500",
+            "bg-purple-500", "bg-pink-500", "bg-cyan-500"
+        ];
+        const idx = (name || "").charCodeAt(0) % colors.length;
+        return colors[idx];
+    };
+
     return (
         <>
-            {/* <Navbar /> */}
-            <div className="min-h-screen bg-slate-50 p-6">
+            <div className="min-h-screen bg-slate-50 border border-slate-200 rounded-xl p-8 space-y-6">
                 {/* HEADER */}
                 <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3">
-                        <Icon icon="mdi:truck-delivery" className="text-blue-700" width={36} />
+                    <h1 className="text-3xl font-bold text-blue-900 flex items-center gap-3">
                         Manajemen Kurir APK
                     </h1>
                     <p className="text-slate-500 mt-1">
-                        Kelola kurir dan pengiriman alat peraga kampanye
+                        Kelola kurir alat peraga kampanye
                     </p>
                 </div>
 
@@ -234,32 +258,8 @@ export default function KurirApkIndex() {
                     </div>
                 </div>
 
-                {/* TABS */}
+                {/* FILTER & ACTIONS */}
                 <div className="bg-white rounded-xl border border-slate-200 mb-6">
-                    <div className="flex border-b border-slate-200">
-                        <button
-                            onClick={() => setActiveTab("kurir")}
-                            className={`flex-1 px-6 py-4 text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${activeTab === "kurir"
-                                    ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50/50"
-                                    : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
-                                }`}
-                        >
-                            <Icon icon="mdi:account-group" width={20} />
-                            Daftar Kurir
-                        </button>
-                        <button
-                            onClick={() => setActiveTab("pengiriman")}
-                            className={`flex-1 px-6 py-4 text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${activeTab === "pengiriman"
-                                    ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50/50"
-                                    : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
-                                }`}
-                        >
-                            <Icon icon="mdi:truck-fast" width={20} />
-                            Riwayat Pengiriman
-                        </button>
-                    </div>
-
-                    {/* FILTER & ACTIONS */}
                     <div className="p-5 flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
                         <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
                             {/* Search */}
@@ -271,62 +271,53 @@ export default function KurirApkIndex() {
                                 />
                                 <input
                                     type="text"
-                                    placeholder={activeTab === "kurir" ? "Cari kurir..." : "Cari pengiriman..."}
+                                    placeholder="Cari kurir..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     className="w-full sm:w-64 pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                                 />
                             </div>
 
-                            {/* Area Filter (only for kurir tab) */}
-                            {activeTab === "kurir" && (
-                                <select
-                                    value={selectedArea}
-                                    onChange={(e) => setSelectedArea(e.target.value)}
-                                    className="px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white transition cursor-pointer hover:bg-slate-50"
-                                >
-                                    {areaList.map((area) => (
-                                        <option key={area} value={area}>
-                                            {area}
-                                        </option>
-                                    ))}
-                                </select>
-                            )}
+                            {/* Status Filter */}
+                            <select
+                                value={filterStatus}
+                                onChange={(e) => setFilterStatus(e.target.value)}
+                                className="px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white transition cursor-pointer hover:bg-slate-50"
+                            >
+                                <option value="Semua">Semua Status</option>
+                                <option value="active">Aktif</option>
+                                <option value="inactive">Nonaktif</option>
+                            </select>
                         </div>
 
-                        {/* Action Buttons */}
-                        <div className="flex gap-3">
-                            {activeTab === "kurir" ? (
-                                <button
-                                    onClick={() => {
-                                        setModalType("tambah-kurir");
-                                        setShowModal(true);
-                                    }}
-                                    className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
-                                >
-                                    <Icon icon="mdi:account-plus" width={20} />
-                                    Tambah Kurir
-                                </button>
-                            ) : (
-                                <button
-                                    onClick={() => {
-                                        setModalType("tambah-pengiriman");
-                                        setShowModal(true);
-                                    }}
-                                    className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
-                                >
-                                    <Icon icon="mdi:truck-plus" width={20} />
-                                    Buat Pengiriman
-                                </button>
-                            )}
-                        </div>
+                        {/* Add Button */}
+                        <button
+                            onClick={openCreateModal}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                        >
+                            <Icon icon="mdi:account-plus" width={20} />
+                            Tambah Kurir
+                        </button>
                     </div>
                 </div>
 
-                {/* CONTENT */}
-                {activeTab === "kurir" ? (
-                    /* KURIR TABLE */
-                    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                {/* KURIR TABLE */}
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    {isLoading ? (
+                        <div className="flex items-center justify-center py-20">
+                            <Icon icon="mdi:loading" className="animate-spin text-blue-600" width={40} />
+                        </div>
+                    ) : isError ? (
+                        <div className="text-center py-20 text-red-500">
+                            <Icon icon="mdi:alert-circle" width={48} className="mx-auto mb-2" />
+                            <p>Gagal memuat data kurir</p>
+                        </div>
+                    ) : kurirList.length === 0 ? (
+                        <div className="text-center py-20 text-slate-500">
+                            <Icon icon="mdi:account-off" width={48} className="mx-auto mb-2 text-slate-300" />
+                            <p>Belum ada kurir terdaftar</p>
+                        </div>
+                    ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full">
                                 <thead className="bg-slate-50 border-b border-slate-200">
@@ -335,16 +326,13 @@ export default function KurirApkIndex() {
                                             Kurir
                                         </th>
                                         <th className="text-left px-5 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider">
-                                            Telepon
-                                        </th>
-                                        <th className="text-left px-5 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider">
-                                            Area
+                                            No. HP
                                         </th>
                                         <th className="text-center px-5 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider">
-                                            Pengiriman
+                                            Total Pengiriman
                                         </th>
                                         <th className="text-center px-5 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider">
-                                            Rating
+                                            Selesai
                                         </th>
                                         <th className="text-center px-5 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider">
                                             Status
@@ -355,34 +343,27 @@ export default function KurirApkIndex() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {filteredKurir.map((kurir) => (
+                                    {kurirList.map((kurir) => (
                                         <tr key={kurir.id} className="hover:bg-slate-50 transition">
                                             <td className="px-5 py-4">
                                                 <div className="flex items-center gap-3">
-                                                    <img
-                                                        src={kurir.foto}
-                                                        alt={kurir.nama}
-                                                        className="w-10 h-10 rounded-full object-cover border-2 border-slate-200"
-                                                    />
-                                                    <span className="font-semibold text-slate-800">
-                                                        {kurir.nama}
-                                                    </span>
+                                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm ${getAvatarColor(kurir.nama)}`}>
+                                                        {getInitials(kurir.nama)}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-semibold text-slate-800">{kurir.nama}</p>
+                                                        {kurir.user?.email && (
+                                                            <p className="text-xs text-slate-500">{kurir.user.email}</p>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </td>
-                                            <td className="px-5 py-4 text-slate-600">{kurir.telepon}</td>
-                                            <td className="px-5 py-4">
-                                                <span className="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-md text-xs font-medium border border-slate-200">
-                                                    {kurir.area}
-                                                </span>
-                                            </td>
+                                            <td className="px-5 py-4 text-slate-600">{kurir.no_hp}</td>
                                             <td className="px-5 py-4 text-center font-bold text-slate-800">
-                                                {kurir.totalPengiriman}
+                                                {kurir.total_pengiriman || 0}
                                             </td>
-                                            <td className="px-5 py-4 text-center">
-                                                <div className="flex items-center justify-center gap-1">
-                                                    <Icon icon="mdi:star" className="text-yellow-500" width={16} />
-                                                    <span className="font-medium text-slate-700">{kurir.rating}</span>
-                                                </div>
+                                            <td className="px-5 py-4 text-center font-bold text-emerald-600">
+                                                {kurir.pengiriman_selesai || 0}
                                             </td>
                                             <td className="px-5 py-4 text-center">
                                                 <span
@@ -394,22 +375,18 @@ export default function KurirApkIndex() {
                                             <td className="px-5 py-4">
                                                 <div className="flex items-center justify-center gap-1">
                                                     <button
-                                                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition"
-                                                        title="Detail"
-                                                    >
-                                                        <Icon icon="mdi:eye" width={18} />
-                                                    </button>
-                                                    <button
+                                                        onClick={() => openEditModal(kurir)}
                                                         className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded transition"
                                                         title="Edit"
                                                     >
-                                                        <Icon icon="mdi:pencil" width={18} />
+                                                        <Icon icon="proicons:pencil" width={20} />
                                                     </button>
                                                     <button
+                                                        onClick={() => setDeleteConfirm(kurir)}
                                                         className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition"
                                                         title="Hapus"
                                                     >
-                                                        <Icon icon="mdi:delete" width={18} />
+                                                        <Icon icon="mynaui:trash" width={20} />
                                                     </button>
                                                 </div>
                                             </td>
@@ -418,222 +395,118 @@ export default function KurirApkIndex() {
                                 </tbody>
                             </table>
                         </div>
-                    </div>
-                ) : (
-                    /* PENGIRIMAN TABLE */
-                    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                        <div className="overflow-x-auto">
-                            <table className="w-full">
-                                <thead className="bg-slate-50 border-b border-slate-200">
-                                    <tr>
-                                        <th className="text-left px-5 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider">
-                                            Item
-                                        </th>
-                                        <th className="text-center px-5 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider">
-                                            Jumlah
-                                        </th>
-                                        <th className="text-left px-5 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider">
-                                            Kurir
-                                        </th>
-                                        <th className="text-left px-5 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider">
-                                            Tujuan
-                                        </th>
-                                        <th className="text-center px-5 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider">
-                                            Tanggal
-                                        </th>
-                                        <th className="text-center px-5 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider">
-                                            Status
-                                        </th>
-                                        <th className="text-center px-5 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider">
-                                            Aksi
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {filteredPengiriman.map((pengiriman) => (
-                                        <tr key={pengiriman.id} className="hover:bg-slate-50 transition">
-                                            <td className="px-5 py-4">
-                                                <p className="font-semibold text-slate-800">{pengiriman.item}</p>
-                                            </td>
-                                            <td className="px-5 py-4 text-center font-bold text-slate-800">
-                                                {pengiriman.jumlah}
-                                            </td>
-                                            <td className="px-5 py-4 text-slate-600">{pengiriman.kurir}</td>
-                                            <td className="px-5 py-4">
-                                                <p className="font-medium text-slate-700">{pengiriman.tujuan}</p>
-                                                <p className="text-xs text-slate-500">{pengiriman.alamat}</p>
-                                            </td>
-                                            <td className="px-5 py-4 text-center text-slate-600">
-                                                {pengiriman.tanggal}
-                                            </td>
-                                            <td className="px-5 py-4 text-center">
-                                                <span
-                                                    className={`px-2.5 py-1 rounded-md text-xs font-bold border ${getStatusBadge(pengiriman.status)}`}
-                                                >
-                                                    {getStatusLabel(pengiriman.status)}
-                                                </span>
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <div className="flex items-center justify-center gap-1">
-                                                    <button
-                                                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition"
-                                                        title="Detail"
-                                                    >
-                                                        <Icon icon="mdi:eye" width={18} />
-                                                    </button>
-                                                    <button
-                                                        className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition"
-                                                        title="Update Status"
-                                                    >
-                                                        <Icon icon="mdi:update" width={18} />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                )}
+                    )}
+                </div>
 
-                {/* MODAL */}
+                {/* CREATE/EDIT MODAL */}
                 {showModal && (
                     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                         <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg border border-slate-200">
                             <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50 rounded-t-xl">
                                 <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                                     <Icon
-                                        icon={
-                                            modalType === "tambah-kurir"
-                                                ? "mdi:account-plus"
-                                                : "mdi:truck-plus"
-                                        }
+                                        icon={editingKurir ? "mdi:account-edit" : "mdi:account-plus"}
                                         className="text-blue-600"
                                         width={24}
                                     />
-                                    {modalType === "tambah-kurir"
-                                        ? "Tambah Kurir Baru"
-                                        : "Buat Pengiriman Baru"}
+                                    {editingKurir ? "Edit Kurir" : "Tambah Kurir Baru"}
                                 </h3>
                                 <button
-                                    onClick={() => setShowModal(false)}
+                                    onClick={resetForm}
                                     className="p-1 hover:bg-slate-200 rounded transition text-slate-400 hover:text-slate-600"
                                 >
                                     <Icon icon="mdi:close" width={20} />
                                 </button>
                             </div>
 
-                            <div className="p-6 space-y-4">
-                                {modalType === "tambah-kurir" ? (
-                                    <>
-                                        {/* Nama Kurir */}
-                                        <div>
-                                            <label className="block text-sm font-semibold text-slate-700 mb-1">
-                                                Nama Kurir
-                                            </label>
-                                            <input
-                                                type="text"
-                                                placeholder="Masukkan nama kurir"
-                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        </div>
+                            <form onSubmit={handleSubmit}>
+                                <div className="p-6 space-y-4">
+                                    {/* Nama Kurir */}
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1">
+                                            Nama Kurir <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            placeholder="Masukkan nama kurir"
+                                            value={formData.nama}
+                                            onChange={(e) => setFormData({ ...formData, nama: e.target.value })}
+                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                        <p className="text-xs text-slate-500 mt-1">Nama tidak boleh mengandung angka</p>
+                                    </div>
 
-                                        {/* Telepon */}
-                                        <div>
-                                            <label className="block text-sm font-semibold text-slate-700 mb-1">
-                                                No. Telepon
-                                            </label>
-                                            <input
-                                                type="tel"
-                                                placeholder="08xxxxxxxxxx"
-                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        </div>
+                                    {/* Telepon */}
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1">
+                                            No. HP <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            type="tel"
+                                            placeholder="08xxxxxxxxxx"
+                                            value={formData.no_hp}
+                                            onChange={(e) => setFormData({ ...formData, no_hp: e.target.value })}
+                                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                        <p className="text-xs text-slate-500 mt-1">Format: 10-13 digit tanpa awalan 021</p>
+                                    </div>
+                                </div>
 
-                                        {/* Area */}
-                                        <div>
-                                            <label className="block text-sm font-semibold text-slate-700 mb-1">
-                                                Area Tugas
-                                            </label>
-                                            <select className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                                                <option value="">-- Pilih Area --</option>
-                                                <option value="Jakarta Pusat">Jakarta Pusat</option>
-                                                <option value="Jakarta Selatan">Jakarta Selatan</option>
-                                                <option value="Jakarta Timur">Jakarta Timur</option>
-                                                <option value="Jakarta Barat">Jakarta Barat</option>
-                                                <option value="Jakarta Utara">Jakarta Utara</option>
-                                            </select>
-                                        </div>
-                                    </>
-                                ) : (
-                                    <>
-                                        {/* Pilih Kurir */}
-                                        <div>
-                                            <label className="block text-sm font-semibold text-slate-700 mb-1">
-                                                Pilih Kurir
-                                            </label>
-                                            <select className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                                                <option value="">-- Pilih Kurir --</option>
-                                                {dummyKurir
-                                                    .filter((k) => k.status === "aktif")
-                                                    .map((kurir) => (
-                                                        <option key={kurir.id} value={kurir.id}>
-                                                            {kurir.nama} - {kurir.area}
-                                                        </option>
-                                                    ))}
-                                            </select>
-                                        </div>
+                                <div className="p-5 border-t border-slate-200 bg-slate-50 rounded-b-xl flex justify-end gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={resetForm}
+                                        className="px-5 py-2.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-700 hover:bg-slate-50 transition"
+                                    >
+                                        Batal
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={createMutation.isPending || updateMutation.isPending}
+                                        className="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                    >
+                                        {(createMutation.isPending || updateMutation.isPending) && (
+                                            <Icon icon="mdi:loading" className="animate-spin" width={18} />
+                                        )}
+                                        {editingKurir ? "Simpan Perubahan" : "Tambah Kurir"}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
 
-                                        {/* Item */}
-                                        <div>
-                                            <label className="block text-sm font-semibold text-slate-700 mb-1">
-                                                Item APK
-                                            </label>
-                                            <input
-                                                type="text"
-                                                placeholder="Nama item yang dikirim"
-                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        </div>
-
-                                        {/* Jumlah */}
-                                        <div>
-                                            <label className="block text-sm font-semibold text-slate-700 mb-1">
-                                                Jumlah
-                                            </label>
-                                            <input
-                                                type="number"
-                                                placeholder="Masukkan jumlah"
-                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        </div>
-
-                                        {/* Tujuan */}
-                                        <div>
-                                            <label className="block text-sm font-semibold text-slate-700 mb-1">
-                                                Tujuan
-                                            </label>
-                                            <input
-                                                type="text"
-                                                placeholder="Alamat pengiriman"
-                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-
-                            <div className="p-5 border-t border-slate-200 bg-slate-50 rounded-b-xl flex justify-end gap-3">
-                                <button
-                                    onClick={() => setShowModal(false)}
-                                    className="px-5 py-2.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-700 hover:bg-slate-50 transition"
-                                >
-                                    Batal
-                                </button>
-                                <button className="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition shadow-sm">
-                                    Simpan
-                                </button>
+                {/* DELETE CONFIRMATION MODAL */}
+                {deleteConfirm && (
+                    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-md border border-slate-200">
+                            <div className="p-6 text-center">
+                                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <Icon icon="mdi:delete-alert" className="text-red-600" width={32} />
+                                </div>
+                                <h3 className="text-lg font-bold text-slate-800 mb-2">Hapus Kurir?</h3>
+                                <p className="text-slate-500 mb-6">
+                                    Anda yakin ingin menghapus kurir <strong>{deleteConfirm.nama}</strong>?
+                                    Tindakan ini tidak dapat dibatalkan.
+                                </p>
+                                <div className="flex gap-3 justify-center">
+                                    <button
+                                        onClick={() => setDeleteConfirm(null)}
+                                        className="px-5 py-2.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-700 hover:bg-slate-50 transition"
+                                    >
+                                        Batal
+                                    </button>
+                                    <button
+                                        onClick={() => deleteMutation.mutate(deleteConfirm.id)}
+                                        disabled={deleteMutation.isPending}
+                                        className="px-5 py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition shadow-sm disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                        {deleteMutation.isPending && (
+                                            <Icon icon="mdi:loading" className="animate-spin" width={18} />
+                                        )}
+                                        Hapus
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>

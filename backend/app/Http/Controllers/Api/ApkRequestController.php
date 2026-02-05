@@ -2,24 +2,102 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Controller;
+use App\Models\AdminApk;
 use App\Models\ApkRequest;
 use App\Models\ApkRequestItem;
 use App\Models\ApkRequestStatus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use App\Http\Controllers\Controller;
+use Illuminate\Validation\Rule;
 
 class ApkRequestController extends Controller
 {
-    // ✅ LIST - auto filter sesuai role
+    /* =====================================================
+       Helpers
+       ===================================================== */
+
+    private function roleName($user): ?string
+    {
+        $user->loadMissing('role');
+        return $user->role?->role; // apk_koordinator / admin_apk / apk_kurir / admin_paslon
+    }
+
+    private function requireKoordinator($user)
+    {
+        $coor = $user->apkKoordinator;
+        if (!$coor) {
+            abort(response()->json([
+                'status' => false,
+                'message' => 'Akun ini belum terdaftar sebagai Koordinator APK'
+            ], 403));
+        }
+        return $coor;
+    }
+
+    private function requireKurir($user)
+    {
+        $kurir = $user->apkKurir;
+        if (!$kurir) {
+            abort(response()->json([
+                'status' => false,
+                'message' => 'Akun ini belum terdaftar sebagai Kurir APK'
+            ], 403));
+        }
+        return $kurir;
+    }
+
+    private function requireAdminApk($user)
+    {
+        $admin = $user->adminApk;
+        if (!$admin) {
+            abort(response()->json([
+                'status' => false,
+                'message' => 'Akun ini belum terdaftar sebagai Admin APK'
+            ], 403));
+        }
+        return $admin;
+    }
+
+    private function getSingleAdminApk(): ?AdminApk
+    {
+        // kalau admin apk cuma 1, ambil yang active dulu
+        return AdminApk::whereNull('deleted_at')
+            ->where('status', 'active')
+            ->first() ?? AdminApk::whereNull('deleted_at')->first();
+    }
+
+    private function generateRequestNo(): string
+    {
+        // contoh: APK-20260203-0001
+        $date = now()->format('Ymd');
+
+        $last = ApkRequest::whereNotNull('request_no')
+            ->where('request_no', 'like', "APK-$date-%")
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $next = 1;
+        if ($last && preg_match('/APK-\d{8}-(\d+)/', $last->request_no, $m)) {
+            $next = (int)$m[1] + 1;
+        }
+
+        return 'APK-' . $date . '-' . str_pad((string)$next, 4, '0', STR_PAD_LEFT);
+    }
+
+    /* =====================================================
+       LIST & DETAIL (NO PAGINATE)
+       ===================================================== */
+
     public function index(Request $request)
     {
         $user = auth()->user();
+        $role = $this->roleName($user);
 
         $query = ApkRequest::query()
             ->with([
                 'status:id,code,name',
-                'items.item',      // kalau mau select field tertentu bisa dioptimasi nanti
+                'items.item.bentuk',  // include bentuk relation
                 'items.unit',
                 'coordinator:id,nama,no_hp',
                 'courier:id,nama,no_hp',
@@ -27,63 +105,62 @@ class ApkRequestController extends Controller
             ])
             ->latest();
 
-        // filter optional by status_code (contoh: ?status=SUBMITTED)
         if ($request->filled('status')) {
             $statusCode = $request->status;
             $query->whereHas('status', fn($q) => $q->where('code', $statusCode));
         }
 
-        // 🔒 Role filtering
-        if ($user->hasRole('apk_koordinator')) {
-            $coordinator = $user->coordinatorApk;
-            $query->where('coordinator_id', $coordinator->id);
-        } elseif ($user->hasRole('apk_kurir')) {
-            $kurir = $user->courierApk;
+        if ($role === 'apk_koordinator') {
+            $coor = $this->requireKoordinator($user);
+            $query->where('coordinator_id', $coor->id);
+        } elseif ($role === 'apk_kurir') {
+            $kurir = $this->requireKurir($user);
             $query->where('courier_id', $kurir->id);
         } else {
-            // admin_apk / admin_paslon -> lihat semua (atau kamu bisa filter per paslon_id kalau mau)
+            // admin_apk / admin_paslon -> lihat semua
         }
 
-        return response()->json($query->paginate(15));
+        return response()->json([
+            'status' => true,
+            'data'   => $query->get(),
+        ]);
     }
 
-    // ✅ DETAIL - auto filter sesuai role
     public function show($id)
     {
         $user = auth()->user();
+        $role = $this->roleName($user);
 
         $apkRequest = ApkRequest::with([
             'status:id,code,name',
-            'items.item',
+            'items.item.bentuk',
             'items.unit',
             'histories.status:id,code,name',
             'coordinator:id,nama,no_hp,alamat',
             'courier:id,nama,no_hp',
             'admin:id,nama,no_hp',
-        ])
-            ->findOrFail($id);
+        ])->findOrFail($id);
 
-        // 🔒 Authorize by role
-        if ($user->hasRole('apk_koordinator')) {
-            $coordinator = $user->coordinatorApk;
-            abort_if($apkRequest->coordinator_id !== $coordinator->id, 403, 'Tidak punya akses');
+        if ($role === 'apk_koordinator') {
+            $coor = $this->requireKoordinator($user);
+            abort_if($apkRequest->coordinator_id !== $coor->id, 403, 'Tidak punya akses');
         }
 
-        if ($user->hasRole('apk_kurir')) {
-            $kurir = $user->courierApk;
-            abort_if($apkRequest->courier_id !== $kurir->id, 403, 'Tidak punya akses');
+        if ($role === 'apk_kurir') {
+            $kurir = $this->requireKurir($user);
+            abort_if((int)$apkRequest->courier_id !== (int)$kurir->id, 403, 'Tidak punya akses');
         }
 
-        // admin_apk/admin_paslon -> allowed
-
-        return response()->json($apkRequest);
+        return response()->json([
+            'status' => true,
+            'data'   => $apkRequest
+        ]);
     }
 
     /* =====================================================
        KOORDINATOR
        ===================================================== */
 
-    // 1️⃣ Koordinator submit request pertama
     public function store(Request $request)
     {
         $request->validate([
@@ -94,16 +171,37 @@ class ApkRequestController extends Controller
             'items.*.note'       => 'nullable|string',
         ]);
 
-        $coordinator = auth()->user()->coordinatorApk; // relasi user → coordinator
+        $user = auth()->user();
+        $role = $this->roleName($user);
 
-        DB::transaction(function () use ($request, $coordinator) {
+        if ($role !== 'apk_koordinator') {
+            return response()->json(['status' => false, 'message' => 'Akses ditolak (bukan Koordinator APK)'], 403);
+        }
 
+        $coor = $this->requireKoordinator($user);
+
+        // admin apk cuma 1 => isi admin_id dari awal
+        $singleAdmin = $this->getSingleAdminApk();
+        if (!$singleAdmin) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Admin APK belum ada (admin_apks kosong)'
+            ], 500);
+        }
+
+        $created = null;
+
+        DB::transaction(function () use ($request, $coor, $singleAdmin, $user, &$created) {
             $statusSubmitted = ApkRequestStatus::where('code', 'SUBMITTED')->firstOrFail();
 
+            $requestNo = $this->generateRequestNo();
+
             $apkRequest = ApkRequest::create([
-                'coordinator_id'   => $coordinator->id,
+                'request_no'        => $requestNo,
+                'coordinator_id'    => $coor->id,
+                'admin_id'          => $singleAdmin->id, // ✅ langsung isi
                 'current_status_id' => $statusSubmitted->id,
-                'revision_no'      => 1,
+                'revision_no'       => 1,
             ]);
 
             foreach ($request->items as $item) {
@@ -116,17 +214,19 @@ class ApkRequestController extends Controller
                 ]);
             }
 
-            $apkRequest->setStatusByCode(
-                'SUBMITTED',
-                'COORDINATOR',
-                $coordinator->id
-            );
+            // ✅ history pakai changed_by = users.id (int)
+            $apkRequest->setStatusByCode('SUBMITTED', (int)$user->id, 'Request dibuat');
+
+            $created = $apkRequest->fresh(['status', 'items.item', 'items.unit', 'coordinator', 'admin']);
         });
 
-        return response()->json(['message' => 'Request berhasil diajukan']);
+        return response()->json([
+            'status'  => true,
+            'message' => 'Request berhasil diajukan',
+            'data'    => $created
+        ]);
     }
 
-    // 2️⃣ Koordinator revise items (HANYA kalau REJECTED)
     public function reviseItems(Request $request, $id)
     {
         $request->validate([
@@ -134,183 +234,252 @@ class ApkRequestController extends Controller
             'items.*.item_id' => 'required|integer|exists:apk_items,id',
             'items.*.qty'     => 'required|numeric|min:0.01',
             'items.*.unit_id' => 'required|integer|exists:units,id',
+            'items.*.note'    => 'nullable|string',
         ]);
 
-        $coordinator = auth()->user()->coordinatorApk;
+        $user = auth()->user();
+        $role = $this->roleName($user);
+
+        if ($role !== 'apk_koordinator') {
+            return response()->json(['status' => false, 'message' => 'Akses ditolak (bukan Koordinator APK)'], 403);
+        }
+
+        $coor = $this->requireKoordinator($user);
 
         $apkRequest = ApkRequest::where('id', $id)
-            ->where('coordinator_id', $coordinator->id)
+            ->where('coordinator_id', $coor->id)
             ->firstOrFail();
 
         if (! $apkRequest->isStatus('REJECTED')) {
-            abort(403, 'Request tidak bisa direvisi');
+            abort(403, 'Request tidak bisa direvisi (status harus REJECTED)');
         }
 
-        DB::transaction(function () use ($apkRequest, $request, $coordinator) {
+        DB::transaction(function () use ($apkRequest, $request, $user) {
 
-            // hapus items lama
             $apkRequest->items()->delete();
 
-            // insert items baru
             foreach ($request->items as $item) {
                 ApkRequestItem::create([
                     'apk_request_id' => $apkRequest->id,
                     'item_id'        => $item['item_id'],
                     'qty'            => $item['qty'],
                     'unit_id'        => $item['unit_id'],
+                    'note'           => $item['note'] ?? null,
                 ]);
             }
 
-            $apkRequest->setStatusByCode(
-                'REVISED',
-                'COORDINATOR',
-                $coordinator->id,
-                'Items direvisi'
-            );
+            $apkRequest->setStatusByCode('REVISED', (int)$user->id, 'Items direvisi');
         });
 
-        return response()->json(['message' => 'Item berhasil direvisi']);
+        return response()->json(['status' => true, 'message' => 'Item berhasil direvisi']);
     }
 
-    // 3️⃣ Koordinator submit ulang
     public function resubmit($id)
     {
-        $coordinator = auth()->user()->coordinatorApk;
+        $user = auth()->user();
+        $role = $this->roleName($user);
+
+        if ($role !== 'apk_koordinator') {
+            return response()->json(['status' => false, 'message' => 'Akses ditolak (bukan Koordinator APK)'], 403);
+        }
+
+        $coor = $this->requireKoordinator($user);
 
         $apkRequest = ApkRequest::where('id', $id)
-            ->where('coordinator_id', $coordinator->id)
+            ->where('coordinator_id', $coor->id)
             ->firstOrFail();
 
         if (! $apkRequest->isStatus('REVISED')) {
-            abort(403, 'Request belum direvisi');
+            abort(403, 'Request belum direvisi (status harus REVISED)');
         }
 
-        DB::transaction(function () use ($apkRequest, $coordinator) {
+        DB::transaction(function () use ($apkRequest, $user) {
             $apkRequest->increment('revision_no');
-
-            $apkRequest->setStatusByCode(
-                'SUBMITTED',
-                'COORDINATOR',
-                $coordinator->id,
-                'Resubmitted'
-            );
+            $apkRequest->setStatusByCode('SUBMITTED', (int)$user->id, 'Resubmitted');
         });
 
-        return response()->json(['message' => 'Request berhasil diajukan ulang']);
+        return response()->json(['status' => true, 'message' => 'Request berhasil diajukan ulang']);
     }
 
     /* =====================================================
-       ADMIN
+       ADMIN APK
        ===================================================== */
 
-    // 4️⃣ Admin approve
     public function approve(Request $request, $id)
     {
         $request->validate([
-            'courier_id'    => 'required|exists:apk_kurirs,id',
-            'pickup_address' => 'required|string',
+            'courier_id' => [
+                'required',
+                Rule::exists('apk_kurirs', 'id')
+                    ->whereNull('deleted_at')
+                    ->where('status', 'active'), // ✅ cuma kurir active
+            ],
+            'pickup_address'       => 'required|string',
+            'pickup_scheduled_at'  => 'required|date', // ✅ wajib isi tgl/jam
         ]);
 
-        $admin = auth()->user()->adminApk;
+        $user = auth()->user();
+        $role = $this->roleName($user);
 
-        $apkRequest = ApkRequest::findOrFail($id);
-
-        if (! $apkRequest->isStatus('SUBMITTED')) {
-            abort(403, 'Request tidak bisa disetujui');
+        if ($role !== 'admin_apk') {
+            return response()->json(['status' => false, 'message' => 'Akses ditolak (bukan Admin APK)'], 403);
         }
 
-        DB::transaction(function () use ($apkRequest, $request, $admin) {
+        $admin = $this->requireAdminApk($user);
+
+        $apkRequest = ApkRequest::with(['items', 'status'])->findOrFail($id);
+
+        $allowed = in_array($apkRequest->status?->code, ['SUBMITTED', 'REVISED'], true);
+        if (! $allowed) {
+            abort(403, 'Request tidak bisa disetujui (status harus SUBMITTED atau REVISED)');
+        }
+
+        DB::transaction(function () use ($apkRequest, $request, $admin, $user) {
 
             $apkRequest->update([
-                'admin_id'      => $admin->id,
-                'courier_id'    => $request->courier_id,
-                'pickup_address' => $request->pickup_address,
+                'admin_id'            => $admin->id,
+                'courier_id'          => $request->courier_id,
+                'pickup_address'      => $request->pickup_address,
+                'pickup_scheduled_at' => $request->pickup_scheduled_at, // ✅ simpan tgl
             ]);
 
-            $apkRequest->setStatusByCode(
-                'APPROVED',
-                'ADMIN',
-                $admin->id
-            );
+            $apkRequest->setStatusByCode('APPROVED', (int)$user->id, 'Disetujui admin');
+
+            foreach ($apkRequest->items as $it) {
+                DB::table('apk_stock_transactions')->insert([
+                    'paslon_id'   => $admin->paslon_id,
+                    'item_id'     => $it->item_id,
+                    'type'        => 'OUT',
+                    'qty'         => $it->qty,
+                    'note'        => 'OUT untuk request_no ' . ($apkRequest->request_no ?? $apkRequest->id),
+                    'total_cost'  => null,
+                    'created_by'  => (int)$user->id,
+                    'created_at'  => now(),
+                ]);
+            }
         });
 
-        return response()->json(['message' => 'Request disetujui']);
+        // ✅ return data lengkap biar FE enak update UI setelah approve
+        $fresh = ApkRequest::with([
+            'status:id,code,name',
+            'items.item',
+            'items.unit',
+            'coordinator:id,nama,no_hp,alamat',
+            'courier:id,nama,no_hp',
+            'admin:id,nama,no_hp',
+        ])->find($id);
+
+        return response()->json([
+            'status'  => true,
+            'message' => 'Request disetujui',
+            'data'    => $fresh,
+        ]);
     }
 
-    // 5️⃣ Admin reject
     public function reject(Request $request, $id)
     {
         $request->validate([
             'message' => 'required|string',
         ]);
 
-        $admin = auth()->user()->adminApk;
+        $user = auth()->user();
+        $role = $this->roleName($user);
 
-        $apkRequest = ApkRequest::findOrFail($id);
-
-        if (! $apkRequest->isStatus('SUBMITTED')) {
-            abort(403, 'Request tidak bisa ditolak');
+        if ($role !== 'admin_apk') {
+            return response()->json(['status' => false, 'message' => 'Akses ditolak (bukan Admin APK)'], 403);
         }
 
-        $apkRequest->setStatusByCode(
-            'REJECTED',
-            'ADMIN',
-            $admin->id,
-            $request->message
-        );
+        $this->requireAdminApk($user);
 
-        return response()->json(['message' => 'Request ditolak']);
+        $apkRequest = ApkRequest::with('status')->findOrFail($id);
+
+        $allowed = in_array($apkRequest->status?->code, ['SUBMITTED', 'REVISED'], true);
+        if (! $allowed) {
+            abort(403, 'Request tidak bisa ditolak (status harus SUBMITTED atau REVISED)');
+        }
+
+        $apkRequest->setStatusByCode('REJECTED', (int)$user->id, $request->message);
+
+        return response()->json(['status' => true, 'message' => 'Request ditolak']);
     }
 
     /* =====================================================
        KURIR
        ===================================================== */
 
-    // 6️⃣ Kurir pickup barang
     public function pickup($id)
     {
-        $kurir = auth()->user()->courierApk;
+        $user = auth()->user();
+        $role = $this->roleName($user);
+
+        if ($role !== 'apk_kurir') {
+            return response()->json(['status' => false, 'message' => 'Akses ditolak (bukan Kurir APK)'], 403);
+        }
+
+        $kurir = $this->requireKurir($user);
 
         $apkRequest = ApkRequest::where('id', $id)
             ->where('courier_id', $kurir->id)
             ->firstOrFail();
 
         if (! $apkRequest->isStatus('APPROVED')) {
-            abort(403, 'Request belum bisa diambil');
+            abort(403, 'Request belum bisa diambil (status harus APPROVED)');
         }
 
-        $apkRequest->setStatusByCode(
-            'PICKED_UP',
-            'COURIER',
-            $kurir->id
-        );
+        $apkRequest->setStatusByCode('PICKED_UP', (int)$user->id, 'Pesanan diambil kurir');
 
-        return response()->json(['message' => 'Barang sudah diambil']);
+        return response()->json(['status' => true, 'message' => 'Barang sudah diambil']);
     }
 
-    /* =====================================================
-       KOORDINATOR (FINAL)
-       ===================================================== */
-
-    // 7️⃣ Koordinator konfirmasi sampai
-    public function delivered($id)
+    public function arrive($id)
     {
-        $coordinator = auth()->user()->coordinatorApk;
+        $user = auth()->user();
+        $role = $this->roleName($user);
+
+        if ($role !== 'apk_kurir') {
+            return response()->json(['status' => false, 'message' => 'Akses ditolak (bukan Kurir APK)'], 403);
+        }
+
+        $kurir = $this->requireKurir($user);
 
         $apkRequest = ApkRequest::where('id', $id)
-            ->where('coordinator_id', $coordinator->id)
+            ->where('courier_id', $kurir->id)
             ->firstOrFail();
 
         if (! $apkRequest->isStatus('PICKED_UP')) {
-            abort(403, 'Request belum diambil kurir');
+            abort(403, 'Tidak bisa konfirmasi sampai (status harus PICKED_UP)');
         }
 
-        $apkRequest->setStatusByCode(
-            'DELIVERED',
-            'COORDINATOR',
-            $coordinator->id
-        );
+        $apkRequest->setStatusByCode('ARRIVED', (int)$user->id, 'Barang sampai tujuan');
 
-        return response()->json(['message' => 'Barang sudah sampai']);
+        return response()->json(['status' => true, 'message' => 'Konfirmasi sampai berhasil']);
+    }
+
+    /* =====================================================
+       KOORDINATOR FINAL
+       ===================================================== */
+
+    public function delivered($id)
+    {
+        $user = auth()->user();
+        $role = $this->roleName($user);
+
+        if ($role !== 'apk_koordinator') {
+            return response()->json(['status' => false, 'message' => 'Akses ditolak (bukan Koordinator APK)'], 403);
+        }
+
+        $coor = $this->requireKoordinator($user);
+
+        $apkRequest = ApkRequest::where('id', $id)
+            ->where('coordinator_id', $coor->id)
+            ->firstOrFail();
+
+        if (! $apkRequest->isStatus('ARRIVED') && ! $apkRequest->isStatus('PICKED_UP')) {
+            abort(403, 'Tidak bisa konfirmasi diterima (status harus ARRIVED atau PICKED_UP)');
+        }
+
+        $apkRequest->setStatusByCode('DELIVERED', (int)$user->id, 'Barang diterima koordinator');
+
+        return response()->json(['status' => true, 'message' => 'Barang sudah diterima']);
     }
 }

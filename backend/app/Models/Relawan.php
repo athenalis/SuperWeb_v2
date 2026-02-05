@@ -80,4 +80,9 @@ class Relawan extends Model
     {
         return $this->belongsTo(Village::class, 'village_code', 'village_code');
     }
+
+    public function visitForms()
+    {
+        return $this->hasMany(VisitForm::class, 'relawan_id', 'id');
+    }
 }

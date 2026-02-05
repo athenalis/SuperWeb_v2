@@ -7,6 +7,16 @@ import api from "../../lib/axios";
 import BatchVerificationView from "./BatchVerificationView";
 import SingleVisitView from "./SingleVisitView";
 import RelawanVisitView from "./RelawanVisitView";
+import AdminApkRequestView from "./AdminApkRequestView";
+import KoordinatorApkRequestView from "./KoordinatorApkRequestView";
+
+import {
+  seedMockIfEmpty,
+  getAllNotifications,
+  markRead,
+  readAll,
+  removeNotif,
+} from "./mockNotifApk";
 
 // === ALERT MODAL FOR DELETED VISITS ===
 const AlertModal = ({ isOpen, onClose, message, title = "Alert" }) => {
@@ -35,7 +45,6 @@ const AlertModal = ({ isOpen, onClose, message, title = "Alert" }) => {
   );
 };
 
-// === CONFIRM DELETE MODAL ===
 // === CONFIRM DELETE MODAL (MATCH DESIGN) ===
 const ConfirmDeleteModal = ({ isOpen, onClose, onConfirm }) => {
   if (!isOpen) return null;
@@ -82,18 +91,17 @@ const ConfirmDeleteModal = ({ isOpen, onClose, onConfirm }) => {
   );
 };
 
-
 export default function InboxIndex() {
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedNotification, setSelectedNotification] = useState(null);
-  const [pendingVerifications, setPendingVerifications] = useState([]); // New state for reminder
+  const [pendingVerifications, setPendingVerifications] = useState([]); // kept (no changes)
   const [deleteTarget, setDeleteTarget] = useState(null);
 
-  // Pagination State
+  // Pagination State (kept - tidak dipakai di mode mock)
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
   // Get role from localStorage - same way as Navbar
@@ -101,7 +109,6 @@ export default function InboxIndex() {
 
   // Filter out deleted notifications for the list, they will be shown as popups
   const listNotifications = notifications.filter(n => n.data?.type !== 'visit_deleted' || n.read_at);
-
   const deletedNotifications = notifications.filter(n => n.data?.type === 'visit_deleted' && !n.read_at);
 
   // Handle deleted notification popup
@@ -128,80 +135,69 @@ export default function InboxIndex() {
     }
   };
 
+  // ✅ MODIFIED: mock fetch (tanpa backend)
   const fetchNotifications = async (isLoadMore = false) => {
-    // Safety timeout to ensure loading doesn't stick
+    // tetap jaga behavior loading biar UI sama
     const timeout = setTimeout(() => isLoadMore ? setLoadingMore(false) : setLoading(false), 5000);
 
     try {
-      const pageToFetch = isLoadMore ? page + 1 : 1;
+      seedMockIfEmpty();
+      const data = getAllNotifications();
 
-      const res = await api.get(`/notifications?page=${pageToFetch}`);
-      clearTimeout(timeout); // Clear timeout if successful response received
+      clearTimeout(timeout);
 
-      if (res.data.success) {
-        const newData = res.data.data?.data || [];
-        const isLastPage = res.data.data?.next_page_url === null;
+      // mode mock: no pagination
+      setNotifications(data);
+      setPage(1);
+      setHasMore(false);
 
-        if (isLoadMore) {
-          setNotifications(prev => [...prev, ...newData]);
-          setPage(pageToFetch);
-        } else {
-          setNotifications(newData);
-          setPage(1);
-
-          // Auto-select first batch notification if available (only on fresh load)
-          const firstBatch = newData.find(n => n.data?.type === 'verification_batch' && !n.read_at);
-          if (firstBatch && !selectedNotification) {
-            setSelectedNotification(firstBatch);
-          }
-        }
-
-        setHasMore(!isLastPage);
+      // Auto-select first batch notification if available (only on fresh load)
+      const firstBatch = data.find(n => n.data?.type === 'verification_batch' && !n.read_at);
+      if (firstBatch && !selectedNotification) {
+        setSelectedNotification(firstBatch);
       }
     } catch (err) {
       console.error("Failed to fetch notifications", err);
     } finally {
-      if (isLoadMore) {
-        setLoadingMore(false);
-      } else {
-        setLoading(false);
-      }
+      if (isLoadMore) setLoadingMore(false);
+      else setLoading(false);
     }
   };
 
   const handleLoadMore = () => {
-    setLoadingMore(true);
-    fetchNotifications(true);
+    // mode mock: tidak ada load more
+    setLoadingMore(false);
+    setHasMore(false);
   };
 
+  // ✅ MODIFIED: read all via mock (tanpa backend)
   const handleReadAll = async () => {
-    // Optimistic update
-    setNotifications(prev => prev.map(n => ({ ...n, read_at: new Date().toISOString() })));
-    try {
-      await api.post("/notifications/read-all");
-      // Don't refetch entirely, just keep current state as read
-      // fetchNotifications(); 
-      // Trigger navbar refresh
-      window.dispatchEvent(new Event('notification-read'));
-    } catch (err) {
-      console.error("Failed to mark all as read", err);
-    }
+    readAll();
+    setNotifications(getAllNotifications());
+    window.dispatchEvent(new Event('notification-read'));
   };
 
+  // ✅ MODIFIED: click notif — mark read via mock untuk type apk_request*, sisanya tetap jalan (kunjungan masih pakai API detail view)
   const handleNotificationClick = async (notif) => {
     console.log("Notification clicked:", notif.data); // Debug log
 
     // Optimistic read status update
     if (!notif.read_at) {
-      markAsReadLocally(notif.id);
-
-      // API call in background
-      try {
-        await api.post(`/notifications/${notif.id}/read`);
-        // Trigger navbar refresh
+      // kalau notif ini mock (apk_request*) -> read via local
+      if ((notif.data?.type || "").startsWith("apk_request")) {
+        markRead(notif.id);
+        setNotifications(getAllNotifications());
         window.dispatchEvent(new Event('notification-read'));
-      } catch (err) {
-        console.error("Failed to mark as read", err);
+      } else {
+        // default existing behavior (kunjungan)
+        markAsReadLocally(notif.id);
+
+        try {
+          await api.post(`/notifications/${notif.id}/read`);
+          window.dispatchEvent(new Event('notification-read'));
+        } catch (err) {
+          console.error("Failed to mark as read", err);
+        }
       }
     }
 
@@ -216,11 +212,19 @@ export default function InboxIndex() {
       }
     };
 
+    // ✅ NEW: APK REQUEST -> show in split view
+    if ((data.type || "").startsWith("apk_request")) {
+      setSelectedNotification(notif);
+      if (window.innerWidth < 768) {
+        window.history.pushState({ view: 'detail' }, '');
+      }
+      return;
+    }
+
     // If it's a batch verification, show in split view
     if (data.type === 'verification_batch') {
       setSelectedNotification(notif);
-      // Push history state to support hardware back button
-      if (window.innerWidth < 768) { // Only for mobile
+      if (window.innerWidth < 768) {
         window.history.pushState({ view: 'detail' }, '');
       }
       return;
@@ -238,8 +242,7 @@ export default function InboxIndex() {
     // If it has a visit ID (normalized), show in split view
     if (safeNotif.data.kunjungan_id) {
       setSelectedNotification(safeNotif);
-      // Push history state to support hardware back button
-      if (window.innerWidth < 768) { // Only for mobile
+      if (window.innerWidth < 768) {
         window.history.pushState({ view: 'detail' }, '');
       }
       return;
@@ -247,7 +250,6 @@ export default function InboxIndex() {
 
     // Default legacy logic for other types
     try {
-      // Priority: use explicit redirect_url if available
       if (data.redirect_url) {
         if (data.redirect_url.startsWith('http')) {
           window.open(data.redirect_url, '_blank');
@@ -256,24 +258,20 @@ export default function InboxIndex() {
         }
         return;
       }
-
     } catch (err) {
       console.error("Failed to process notification click", err);
     }
   };
 
   const handleBatchComplete = async () => {
-    // If we have history state (mobile), go back
     if (window.history.state?.view === 'detail') {
-      window.history.back(); // This will trigger popstate which closes the view
+      window.history.back();
     } else {
-      setSelectedNotification(null); // Fallback manual close
+      setSelectedNotification(null);
     }
 
-    // Refresh notifications without blocking UI
-    // Reset to page 1 for fresh data
+    // Refresh notifications
     fetchNotifications(false);
-    // if (role === 'koordinator') fetchPendingVerifications();
   };
 
   const formatDate = (dateString) => {
@@ -281,34 +279,29 @@ export default function InboxIndex() {
     return date.toLocaleString("id-ID", {
       day: "2-digit",
       month: "short",
-      hour: "2-digit", // Shortened for list view
+      hour: "2-digit",
       minute: "2-digit",
     });
   };
 
   // --- EFFECTS ---
-
   useEffect(() => {
     fetchNotifications();
 
-    // Auto-refresh notifications every 60 seconds (Reduced frequency)
+    // Auto-refresh (mock)
     const interval = setInterval(() => {
-      // Silent refresh - ONLY if on page 1 to avoid disrupting scroll/pagination
-      if (page === 1) {
-        fetchNotifications();
-      }
-    }, 60000); // 60 seconds interval
+      fetchNotifications();
+    }, 3000);
 
     return () => clearInterval(interval);
-  }, []); // Only runs on mount
+  }, []); // only mount
 
   // === HARDWARE BACK BUTTON SUPPORT ===
   useEffect(() => {
     const handlePopState = (event) => {
-      // If we popped a state and we are in detail view, close it
       setSelectedNotification(prev => {
         if (prev) {
-          return null; // Close detail view
+          return null;
         }
         return prev;
       });
@@ -322,7 +315,6 @@ export default function InboxIndex() {
 
   return (
     <div className="h-[calc(100vh-80px)] flex bg-slate-50 overflow-hidden">
-
       {/* POPUP FOR DELETED VISITS */}
       <AlertModal
         isOpen={!!currentDeletedNotif}
@@ -342,6 +334,13 @@ export default function InboxIndex() {
           setNotifications(prev => prev.filter(n => n.id !== notif.id));
           if (selectedNotification?.id === notif.id) {
             setSelectedNotification(null);
+          }
+
+          // ✅ MODIFIED: delete via local for apk_request*, else keep API
+          if ((notif.data?.type || "").startsWith("apk_request")) {
+            removeNotif(notif.id);
+            setNotifications(getAllNotifications());
+            return;
           }
 
           try {
@@ -424,6 +423,20 @@ export default function InboxIndex() {
                           iconName = 'mdi:trash-can';
                           label = 'Kunjungan Dihapus';
                         }
+                        // ✅ NEW: APK REQUEST BADGES
+                        else if (type === 'apk_request') {
+                          badgeClass = 'bg-blue-50 text-blue-800 border-blue-200';
+                          iconName = 'mdi:clipboard-text-outline';
+                          label = 'Permintaan APK';
+                        } else if (type === 'apk_request_approved') {
+                          badgeClass = 'bg-green-50 text-green-700 border-green-200';
+                          iconName = 'mdi:check-circle';
+                          label = 'Disetujui';
+                        } else if (type === 'apk_request_rejected') {
+                          badgeClass = 'bg-rose-50 text-rose-700 border-rose-200';
+                          iconName = 'mdi:close-circle';
+                          label = 'Ditolak';
+                        }
 
                         return (
                           <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide flex items-center gap-1.5 border shadow-sm ${badgeClass}`}>
@@ -453,7 +466,7 @@ export default function InboxIndex() {
                 </div>
               ))}
 
-              {/* Load More Button */}
+              {/* Load More Button (disabled in mock) */}
               {hasMore && (
                 <button
                   onClick={handleLoadMore}
@@ -481,34 +494,48 @@ export default function InboxIndex() {
       {/* RIGHT PANE: DETAIL */}
       <div className={`${!selectedNotification ? 'hidden md:flex' : 'flex'} w-full md:w-2/3 flex-col bg-slate-50 relative`}>
         {selectedNotification ? (
-          selectedNotification.data?.type === 'verification_batch' ? (
+          selectedNotification.data?.type === "verification_batch" ? (
             <BatchVerificationView
               notification={selectedNotification}
               onComplete={handleBatchComplete}
             />
+          ) : (selectedNotification.data?.type || "").startsWith("apk_request") ? (
+            role === "admin_apk" ? (
+              <AdminApkRequestView
+                key={selectedNotification.id}
+                notification={selectedNotification}
+                onComplete={handleBatchComplete}
+              />
+            ) : (
+              <KoordinatorApkRequestView
+                key={selectedNotification.id}
+                notification={selectedNotification}
+                onComplete={handleBatchComplete}
+              />
+            )
           ) : selectedNotification.data?.kunjungan_id ? (
-            /* Single Visit Detail View - Show RelawanVisitView ONLY for relawan */
             (() => {
               console.log("Rendering visit view - Role:", role, "| Notification:", selectedNotification.data);
-              return role === 'relawan' ? (
+              return role === "relawan" ? (
                 <RelawanVisitView
-                  key={selectedNotification.id} // Force remount
+                  key={selectedNotification.id}
                   notification={selectedNotification}
                   onComplete={handleBatchComplete}
                 />
               ) : (
-                /* Default to SingleVisitView for koordinator and others */
                 <SingleVisitView
-                  key={selectedNotification.id} // Force remount
+                  key={selectedNotification.id}
                   notification={selectedNotification}
                   onComplete={handleBatchComplete}
                 />
               );
             })()
           ) : (
-            /* Generic Detail View for other types */
             <div className="flex flex-col h-full bg-white m-0 md:m-4 md:rounded-2xl shadow-sm border border-slate-100 p-8">
-              <button onClick={() => setSelectedNotification(null)} className="md:hidden mb-4 flex items-center text-slate-500">
+              <button
+                onClick={() => setSelectedNotification(null)}
+                className="md:hidden mb-4 flex items-center text-slate-500"
+              >
                 <Icon icon="mdi:arrow-left" /> Kembali
               </button>
               <h2 className="text-2xl font-bold text-slate-800 mb-4">Detail Notifikasi</h2>
@@ -516,7 +543,6 @@ export default function InboxIndex() {
             </div>
           )
         ) : (
-          /* Empty Selection State */
           <div className="flex-1 flex flex-col items-center justify-center text-slate-300">
             <Icon icon="mdi:bell-outline" width={64} className="mb-4 opacity-50" />
             <p className="font-medium text-lg">Pilih notifikasi untuk melihat detail</p>

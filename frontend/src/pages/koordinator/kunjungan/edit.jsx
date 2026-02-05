@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import api from "../../../lib/axios";
 import toast from "react-hot-toast";
-
+import { Icon } from "@iconify/react";
 
 export default function EditKoordinator() {
   const navigate = useNavigate();
@@ -12,7 +12,6 @@ export default function EditKoordinator() {
     nama: "",
     nik: "",
     no_hp: "",
-    tps: "",
     alamat: "",
     province_code: 31,
     city_code: "",
@@ -38,7 +37,6 @@ export default function EditKoordinator() {
           nama: d.nama,
           nik: d.nik,
           no_hp: d.no_hp,
-          tps: d.tps,
           alamat: d.alamat,
           province_code: d.province_code,
           city_code: d.city_code,
@@ -151,60 +149,58 @@ export default function EditKoordinator() {
 
   if (loading) return <p className="text-center py-10">Loading...</p>;
 
+   /* =========================
+     STYLE
+  ========================= */
+  const baseInput =
+    "w-full border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none";
+
+  const baseSelect =
+    "w-full appearance-none border rounded-lg px-4 py-2 pr-10 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none";
+
+  const disabledSelect = "bg-slate-100 cursor-not-allowed";
+  
   return (
     <div className="bg-white rounded-2xl p-8 shadow max-w-8xl mx-auto">
       <h2 className="text-4xl text-blue-900 font-bold mb-6 text-center">
-        Edit Koordinator
+        Edit Koordinator Kunjungan
       </h2>
 
       <form onSubmit={handleSubmit} className="space-y-5">
 
-        {/* Nama */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* NIK */}
+        <div>
+            <label className="block mb-3 font-bold">NIK</label>
+            <input
+              name="nik"
+              value={form.nik}
+              onChange={handleChange}
+              className="w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400"
+              required
+            />
+          </div>
+
+          {/* NAMA */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block mb-3 font-bold">Nama</label>
             <input
               name="nama"
               value={form.nama}
               onChange={handleChange}
-              className="w-full border rounded-lg px-4 py-2"
+              className="w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400"
               required
             />
           </div>
-
-          {/* NIK */}
-          <div>
-            <label className="block mb-3 font-bold">NIK</label>
-            <input
-              name="nik"
-              value={form.nik}
-              onChange={handleChange}
-              className="w-full border rounded-lg px-4 py-2"
-              required
-            />
-          </div>
-        </div>
-
-        {/* No HP & TPS */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        
+        {/* No HP */}
           <div>
             <label className="block mb-3 font-bold">No HP</label>
             <input
               name="no_hp"
               value={form.no_hp}
               onChange={handleChange}
-              className="w-full border rounded-lg px-4 py-2"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block mb-3 font-bold">TPS</label>
-            <input
-              name="tps"
-              value={form.tps}
-              onChange={handleChange}
-              className="w-full border rounded-lg px-4 py-2"
+              className="w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400"
               required
             />
           </div>
@@ -217,7 +213,7 @@ export default function EditKoordinator() {
             name="alamat"
             value={form.alamat}
             onChange={handleChange}
-            className="w-full border rounded-lg px-4 py-2"
+            className="w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400"
             required
           />
         </div>
@@ -231,7 +227,7 @@ export default function EditKoordinator() {
             <select
               value={31}
               disabled
-              className="w-full border rounded-lg px-4 py-2 bg-gray-100"
+              className={`border border-slate-400 px-6 py-3 pr-12 ${baseSelect} ${disabledSelect}`}
             >
               <option value={31}>DKI JAKARTA</option>
             </select>
@@ -240,72 +236,103 @@ export default function EditKoordinator() {
           {/* Kota */}
           <div>
             <div className="block mb-3 font-bold">Kota / Kabupaten</div>
-            <select
-              name="city_code"
-              value={form.city_code}
-              onChange={handleChange}
-              className="w-full border rounded-lg px-4 py-2"
-              required
-            >
-              <option value="" disabled>Pilih Kota</option>
 
-              {cities.map((c) => (
-                <option key={c.city_code} value={c.city_code}>
-                  {c.city}
+            <div className="relative">
+              <select
+                name="city_code"
+                value={form.city_code}
+                onChange={handleChange}
+                className="w-full appearance-none border rounded-lg px-6 py-3 pr-12 bg-white"
+                required
+              >
+                <option value="" disabled>
+                  Pilih Kota
                 </option>
-              ))}
-            </select>
+
+                {cities.map((c) => (
+                  <option key={c.city_code} value={c.city_code}>
+                    {c.city}
+                  </option>
+                ))}
+              </select>
+
+              {/* ICON CHEVRON */}
+              <Icon
+                icon="mdi:chevron-down"
+                width={22}
+                className="absolute right-4 top-1/2 -translate-y-1/2
+                          text-slate-400 pointer-events-none"
+              />
+            </div>
           </div>
 
           {/* Kecamatan */}
           <div>
             <div className="block mb-3 font-bold">Kecamatan</div>
-            <select
-              name="district_code"
-              value={form.district_code}
-              onChange={handleChange}
-              className="w-full border rounded-lg px-4 py-2"
-              required
-              disabled={!form.city_code}
-            >
-              <option value="" disabled>Pilih Kecamatan</option>
+              <div className="relative">
+                <select
+                  name="district_code"
+                  value={form.district_code}
+                  onChange={handleChange}
+                  className="w-full appearance-none border rounded-lg px-6 py-3 pr-12 bg-white"
+                  required
+                  disabled={!form.city_code}
+                >
+                  <option value="" disabled>Pilih Kecamatan</option>
 
-              {districts.map((d) => (
-                <option key={d.district_code} value={d.district_code}>
-                  {d.district}
-                </option>
-              ))}
-            </select>
+                  {districts.map((d) => (
+                    <option key={d.district_code} value={d.district_code}>
+                      {d.district}
+                    </option>
+                  ))}
+                </select>
+
+                {/* ICON CHEVRON */}
+                  <Icon
+                    icon="mdi:chevron-down"
+                    width={22}
+                    className="absolute right-4 top-1/2 -translate-y-1/2
+                              text-slate-400 pointer-events-none"
+                  />
+              </div>
           </div>
 
           {/* Kelurahan */}
           <div>
             <div className="block mb-3 font-bold">Kelurahan</div>
-            <select
-              name="village_code"
-              value={form.village_code}
-              onChange={handleChange}
-              className="w-full border rounded-lg px-4 py-2"
-              required
-              disabled={!form.district_code}
-            >
-              <option value="" disabled>Pilih Kelurahan</option>
+              <div className="relative">
+                <select
+                  name="village_code"
+                  value={form.village_code}
+                  onChange={handleChange}
+                  className="w-full appearance-none border rounded-lg px-6 py-3 pr-12 bg-white"
+                  required
+                  disabled={!form.district_code}
+                >
+                  <option value="" disabled>Pilih Kelurahan</option>
 
-              {villages.map((v) => (
-                <option key={v.village_code} value={v.village_code}>
-                  {v.village}
-                </option>
-              ))}
-            </select>
-          </div>
-
+                  {villages.map((v) => (
+                    <option key={v.village_code} value={v.village_code}>
+                      {v.village}
+                    </option>
+                  ))}
+                </select>
+                {/* ICON CHEVRON */}
+                    <Icon
+                      icon="mdi:chevron-down"
+                      width={22}
+                      className="absolute right-4 top-1/2 -translate-y-1/2
+                                text-slate-400 pointer-events-none"
+                    />
+              </div>
+              </div>
         </div>
 
         {/* BUTTON */}
-        <div className="flex gap-4 pt-4">
+        <div className="flex justify-end gap-4 pt-4">
           <button
             type="submit"
-            className="bg-blue-900 text-white px-6 py-2 rounded-lg"
+            className="bg-blue-900 hover:bg-blue-800 text-white px-6 py-2 rounded-lg font-semibold"
           >
             Update
           </button>
@@ -313,7 +340,7 @@ export default function EditKoordinator() {
           <button
             type="button"
             onClick={() => navigate(`/koordinator/kunjungan/${id}`)}
-            className="text-gray-500"
+            className="bg-white-100 px-6 py-2 rounded-lg text-gray-600 hover:underline font-semibold"
           >
             Batal
           </button>

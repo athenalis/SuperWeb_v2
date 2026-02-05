@@ -269,6 +269,8 @@ class ContentPlanController extends Controller
             'refund_budget' => 'nullable|boolean',
 
             'content_types'  => 'required|array|min:1',
+            'content_types.*.*.link' => 'nullable|string|max:255',
+            'content_types.*.*.is_collaborator' => 'nullable|boolean',
             'budget_content' => 'required|numeric|min:0',
 
             'influencer_ids'   => 'nullable|array',

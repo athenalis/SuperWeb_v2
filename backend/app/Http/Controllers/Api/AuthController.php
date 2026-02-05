@@ -99,16 +99,37 @@ class AuthController extends Controller
         // TOKEN
         $token = $user->createToken('api-token')->plainTextToken;
 
+        // Build user response
+        $userData = [
+            'id'      => $user->id,
+            'name'    => $user->name,
+            'email'   => $user->email,
+            'role'    => $user->role_name,
+            'role_id' => $user->role_id,
+        ];
+
+        // Jika relawan, tambahkan is_apk dan is_kunjungan untuk redirect logic
+        if ($user->role_name === 'relawan') {
+            // Load relawan jika belum
+            $user->loadMissing('relawan');
+            
+            // Default ke 0 jika relawan record tidak ada
+            $userData['is_apk']       = $user->relawan ? (int) $user->relawan->is_apk : 0;
+            $userData['is_kunjungan'] = $user->relawan ? (int) $user->relawan->is_kunjungan : 0;
+            
+            // Debug log (bisa dihapus nanti)
+            \Log::info('[Login] Relawan flags', [
+                'user_id' => $user->id,
+                'has_relawan' => $user->relawan ? true : false,
+                'is_apk' => $userData['is_apk'],
+                'is_kunjungan' => $userData['is_kunjungan'],
+            ]);
+        }
+
         return response()->json([
             'status' => true,
             'token'  => $token,
-            'user'   => [
-                'id'      => $user->id,
-                'name'    => $user->name,
-                'email'   => $user->email,
-                'role'    => $user->role_name,
-                'role_id' => $user->role_id,
-            ]
+            'user'   => $userData
         ]);
     }
 

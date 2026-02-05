@@ -10,14 +10,8 @@ class ApkRequestStatusHistory extends Model
     protected $table = 'apk_request_status_histories';
     public $timestamps = false; // karena cuma punya created_at
 
-    protected $fillable = [
-        'apk_request_id',
-        'status_id',
-        'actor_type',
-        'actor_id',
-        'note',
-        'created_at',
-    ];
+    protected $fillable = ['apk_request_id', 'status_id', 'changed_by', 'note'];
+
 
     public function request()
     {

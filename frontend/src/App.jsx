@@ -15,7 +15,7 @@ import KoordinatorApk from "./pages/koordinator/apk/index";
 import CreateKoordinatorApk from "./pages/koordinator/apk/create";
 import EditKoordinatorApk from "./pages/koordinator/apk/edit";
 import DetailKoordinatorApk from "./pages/koordinator/apk/detail";
-
+import RequestApk from "./pages/koordinator/apk/request";
 
 import KurirApk from "./pages/kurirApk/index";
 import RelawanApk from "./pages/relawan/apk/index";
@@ -67,34 +67,46 @@ export default function App() {
    * 3 = admin_apk
    * 4 = kunjungan_koordinator
    * 5 = apk_koordinator
-   * 6 = relawan
+   * 6 = relawan (bisa is_kunjungan, is_apk, atau double job keduanya)
    * 7 = apk_kurir
    */
   return (
     <Routes>
-
-      <Route element={<DashboardKurirApk />}>
-        <Route path="Dahboardkurir-apk" element={<DashboardKurirApk />} />
-      </Route>
-
-      {/* ROOT */}
+      {/* ===== PUBLIC ROUTES ===== */}
       <Route path="/" element={<Navigate to="/login" replace />} />
-
-      {/* LOGIN */}
       <Route path="/login" element={<Login />} />
 
-      <Route path="relawan/apk/pasangapk" element={<PasangApk />} />
-
-      {/* SUPERADMIN (layout sendiri) */}
-      <Route path="/superadmin" element={<SuperAdmin />} />
-
-      {/* SEMUA HARUS LOGIN */}
+      {/* ===== PROTECTED - HARUS LOGIN ===== */}
       <Route element={<RequireAuth />}>
+
+        {/* ========================================
+            PASANG APK - FULL SCREEN (tanpa MainLayout)
+            Bisa diakses oleh: apk_koordinator(5), relawan(6), apk_kurir(7)
+            Relawan bisa akses jika is_apk = 1
+        ======================================== */}
+        <Route element={<RequireRole allowedRoleIds={[5, 6, 7]} />}>
+          <Route path="relawan/apk/pasangapk" element={<PasangApk />} />
+        </Route>
+
+        {/* ===== DASHBOARD KURIR APK - FULL SCREEN ===== */}
+        <Route element={<RequireRole allowedRoleIds={[7]} />}>
+          <Route path="Dashboardkurir-apk" element={<DashboardKurirApk />} />
+        </Route>
+
+        {/* ========================================
+            ROUTES DENGAN MAIN LAYOUT (Navbar, Sidebar)
+        ======================================== */}
         <Route path="/" element={<MainLayout />}>
-          {/* DASHBOARD (semua role yang login bisa lihat kalau lo mau) */}
+
+          {/* Dashboard - semua role yang login bisa akses */}
           <Route path="dashboard" element={<Dashboard />} />
 
-          {/* ================= ADMIN_PASLON ONLY (2) ================= */}
+          {/* ================= SUPERADMIN (1) ================= */}
+          <Route element={<RequireRole allowedRoleIds={[1]} />}>
+            <Route path="superadmin" element={<SuperAdmin1 />} />
+          </Route>
+
+          {/* ================= ADMIN_PASLON (2) ================= */}
           <Route element={<RequireRole allowedRoleIds={[2]} />}>
             {/* Koordinator Kunjungan */}
             <Route path="koordinator/kunjungan" element={<Koordinator />} />
@@ -102,13 +114,7 @@ export default function App() {
             <Route path="koordinator/kunjungan/:id/edit" element={<EditKoordinator />} />
             <Route path="koordinator/kunjungan/:id" element={<DetailKoordinator />} />
 
-            {/* Koordinator APK */}
-            <Route path="koordinator/apk" element={<KoordinatorApk />} />
-            <Route path="koordinator/apk/create" element={<CreateKoordinatorApk />} />
-            <Route path="koordinator/apk/:id/edit" element={<EditKoordinatorApk />} />
-            <Route path="koordinator/apk/:id" element={<DetailKoordinatorApk />} />
-
-            {/* Suara */}
+            {/* Suara & Analisis */}
             <Route path="suara/dashboard" element={<Suara />} />
             <Route path="suara/test" element={<SuaraTest />} />
             <Route path="suara/paslon" element={<Paslon />} />
@@ -124,69 +130,81 @@ export default function App() {
             <Route path="konten/:id/analytic" element={<AnalyticContent />} />
           </Route>
 
-          {/* ================= RELAWAN KUNJUNGAN (2,4) ================= */}
-          <Route element={<RequireRole allowedRoleIds={[2, 4]} />}>
-            <Route path="relawan/kunjungan" element={<Relawan />} />
-            <Route path="relawan/kunjungan/:id" element={<DetailRelawan />} />
+          {/* ================= ADMIN_APK (3) ================= */}
+          <Route element={<RequireRole allowedRoleIds={[3]} />}>
+            <Route path="kurir-apk" element={<KurirApk />} />
           </Route>
 
-          {/* ================= KUNJUNGAN_KOORDINATOR ONLY (4) ================= */}
+          {/* ================= KUNJUNGAN_KOORDINATOR (4) ================= */}
           <Route element={<RequireRole allowedRoleIds={[4]} />}>
             <Route path="relawan/kunjungan/create" element={<CreateRelawan />} />
             <Route path="relawan/kunjungan/:id/edit" element={<EditRelawan />} />
           </Route>
 
-          {/* ================= RELAWAN APK (2,5) ================= */}
-          <Route element={<RequireRole allowedRoleIds={[2, 5]} />}>
-            <Route path="relawan/apk" element={<RelawanApk />} />
-            <Route path="relawan/apk/:id" element={<DetailRelawanApk />} />
-          </Route>
-
-          {/* ================= APK_KOORDINATOR ONLY (5) ================= */}
+          {/* ================= APK_KOORDINATOR (5) ================= */}
           <Route element={<RequireRole allowedRoleIds={[5]} />}>
             <Route path="relawan/apk/create" element={<CreateRelawanApk />} />
             <Route path="relawan/apk/:id/edit" element={<EditRelawanApk />} />
+            <Route path="permintaan-apk" element={<RequestApk />} />
           </Route>
 
-          {/* ================= RELAWAN (6) ================= */}
+          {/* ================= RELAWAN (6) =================
+              Relawan bisa is_kunjungan, is_apk, atau double job
+              - Redirect ke /kunjungan jika is_kunjungan saja
+              - Redirect ke /relawan/apk/pasangapk jika is_apk
+          =============================================== */}
           <Route element={<RequireRole allowedRoleIds={[6]} />}>
+            {/* Kunjungan routes - untuk relawan is_kunjungan */}
             <Route path="kunjungan" element={<Kunjungan />} />
             <Route path="kunjungan/anggota" element={<KunjunganAnggota />} />
             <Route path="kunjungan/:id" element={<KunjunganDetail />} />
             <Route path="kunjungan/:id/edit" element={<KunjunganEdit />} />
           </Route>
 
-          {/* ================= INBOX / NOTIF (4,6) ================= */}
-          <Route element={<RequireRole allowedRoleIds={[4, 6]} />}>
-            <Route path="inbox" element={<Inbox />} />
+          {/* ================= SHARED: RELAWAN KUNJUNGAN READ (2, 4) ================= */}
+          <Route element={<RequireRole allowedRoleIds={[2, 4]} />}>
+            <Route path="relawan/kunjungan" element={<Relawan />} />
+            <Route path="relawan/kunjungan/:id" element={<DetailRelawan />} />
           </Route>
 
-          {/* ================= SUPERADMIN INTERNAL (1) ================= */}
-          <Route element={<RequireRole allowedRoleIds={[1]} />}>
-            <Route path="superadmin" element={<SuperAdmin1 />} />
-          </Route>
-
-          {/* =========== ADMIN_APK (role_id: 3) =========== */}
-          <Route element={<RequireRole allowedRoleIds={[3]} />}>
+          {/* ================= SHARED: KOORDINATOR APK (2, 3) ================= */}
+          <Route element={<RequireRole allowedRoleIds={[2, 3]} />}>
             <Route path="koordinator/apk" element={<KoordinatorApk />} />
             <Route path="koordinator/apk/create" element={<CreateKoordinatorApk />} />
             <Route path="koordinator/apk/:id/edit" element={<EditKoordinatorApk />} />
             <Route path="koordinator/apk/:id" element={<DetailKoordinatorApk />} />
-            <Route path="relawan/apk" element={<RelawanApk />} />
-            <Route path="relawan/apk/create" element={<CreateRelawanApk />} />
-            <Route path="relawan/apk/:id/edit" element={<EditRelawanApk />} />
-            <Route path="relawan/apk/:id" element={<DetailRelawanApk />} />
-            <Route path="kurir-apk" element={<KurirApk />} />
           </Route>
 
-          {/* ================= APK MAIN PAGE (3,5,7) ================= */}
+          {/* ================= SHARED: RELAWAN APK READ (2, 3, 5) ================= */}
+          <Route element={<RequireRole allowedRoleIds={[2, 3, 5]} />}>
+            <Route path="relawan/apk" element={<RelawanApk />} />
+            <Route path="relawan/apk/:id" element={<DetailRelawanApk />} />
+          </Route>
+
+          {/* ================= SHARED: RELAWAN APK WRITE (3, 5) ================= */}
+          <Route element={<RequireRole allowedRoleIds={[3, 5]} />}>
+            <Route path="relawan/apk/create" element={<CreateRelawanApk />} />
+            <Route path="relawan/apk/:id/edit" element={<EditRelawanApk />} />
+          </Route>
+
+          {/* ================= SHARED: APK MAIN PAGE (2, 3, 5, 7) ================= */}
           <Route element={<RequireRole allowedRoleIds={[2, 3, 5, 7]} />}>
             <Route path="apk" element={<Apk />} />
             <Route path="apk/:id" element={<DetailApk />} />
             <Route path="apk/:id/edit" element={<EditApk />} />
           </Route>
+
+          {/* ================= SHARED: INBOX / NOTIF (3, 4, 6) ================= */}
+          <Route element={<RequireRole allowedRoleIds={[3, 4, 5, 6]} />}>
+            <Route path="inbox" element={<Inbox />} />
+          </Route>
+
         </Route>
+        {/* END MainLayout */}
+
       </Route>
+      {/* END RequireAuth */}
+
     </Routes>
   );
 }

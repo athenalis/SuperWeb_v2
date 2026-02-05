@@ -16,7 +16,6 @@ class ApkItem extends Model
         'bentuk_id',
         'name',
         'unit_id',
-        'user_id',
         'stock',
         'budget_total',
         'budget_note',

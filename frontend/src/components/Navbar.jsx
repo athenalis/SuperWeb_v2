@@ -29,6 +29,10 @@ export default function Navbar() {
   const [name, setName] = useState("Guest");
   const [unreadCount, setUnreadCount] = useState(0);
 
+  // Relawan flags
+  const [isApk, setIsApk] = useState(false);
+  const [isKunjungan, setIsKunjungan] = useState(false);
+
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -50,9 +54,19 @@ export default function Navbar() {
   const handleNotificationClick = () => {
     if (location.pathname === "/inbox") {
       if (role === "relawan") {
-        navigate("/kunjungan");
+        // Prioritas is_apk
+        const userIsApk = localStorage.getItem("is_apk") === "1";
+        if (userIsApk) {
+          navigate("/relawan/apk/pasangapk");
+        } else {
+          navigate("/kunjungan");
+        }
       } else if (role === "kunjungan_koordinator") {
         navigate("/relawan/kunjungan");
+      } else if (role === "apk_koordinator") {
+        navigate("/permintaan-apk");
+      } else if (role === "admin_apk") {
+        navigate("/kurir-apk");
       } else {
         navigate("/dashboard");
       }
@@ -89,11 +103,15 @@ export default function Navbar() {
     }
   };
 
-  // init role + name + notification polling
+  // init role + name + notification polling + relawan flags
   useEffect(() => {
     const email = localStorage.getItem("email");
     setRole(localStorage.getItem("role") || "");
     setName(getNameFromEmail(email));
+
+    // Baca flag relawan dari localStorage
+    setIsApk(localStorage.getItem("is_apk") === "1");
+    setIsKunjungan(localStorage.getItem("is_kunjungan") === "1");
 
     if (localStorage.getItem("token")) {
       fetchUnreadCount();
@@ -154,8 +172,23 @@ export default function Navbar() {
     { name: "Relawan APK", path: "/relawan/apk", show: ["admin_apk"] },
     { name: "Kurir APK", path: "/kurir-apk", show: ["admin_apk"] },
 
-    { name: "Kunjungan", path: "/kunjungan", show: ["relawan"] },
+    // Menu khusus apk_koordinator
+    { name: "Permintaan", path: "/permintaan-apk", show: ["apk_koordinator"] },
   ];
+
+  // Menu khusus untuk relawan - dinamis berdasarkan flag is_kunjungan dan is_apk
+  const relawanSpecificMenus = [];
+  if (role === "relawan") {
+    if (isKunjungan) {
+      relawanSpecificMenus.push({ name: "Kunjungan", path: "/kunjungan", show: ["relawan"] });
+    }
+    if (isApk) {
+      relawanSpecificMenus.push({ name: "Pemasangan", path: "/relawan/apk/pasangapk", show: ["relawan"] });
+    }
+  }
+
+  // Gabungkan menu utama dengan menu relawan
+  const allMenus = [...menus, ...relawanSpecificMenus];
 
   /* ===== SUB MENU ===== */
   const suaraMenus = [
@@ -213,6 +246,27 @@ export default function Navbar() {
     `block px-4 py-2 text-sm hover:bg-blue-50 transition ${isActive ? "bg-blue-100 font-semibold" : ""
     }`;
 
+  // Check if user is apk_kurir - show minimal navbar
+  const isKurirApk = role === "apk_kurir" || role === "kurir_apk";
+
+  // Jika kurir APK, tampilkan navbar minimal (hanya logo + profile)
+  if (isKurirApk) {
+    return (
+      <nav className="sticky top-0 z-50 bg-blue-900 text-white shadow-md shadow-black/60">
+        <div className="h-20 px-6 flex items-center justify-between">
+          {/* LEFT - Logo */}
+          <div className="text-2xl font-bold tracking-wide">SuperWeb</div>
+
+          {/* RIGHT - Profile Only */}
+          <div className="flex items-center gap-4">
+            <span className="text-sm font-medium">{name}</span>
+            <Profile />
+          </div>
+        </div>
+      </nav>
+    );
+  }
+
   return (
     <nav className="sticky top-0 z-50 bg-blue-900 text-white shadow-md shadow-black/60">
       <div className="h-20 px-6 flex items-center justify-between">
@@ -222,7 +276,7 @@ export default function Navbar() {
 
           {/* DESKTOP MENU */}
           <div className="hidden md:flex gap-8 text-md font-medium items-center">
-            {menus
+            {allMenus
               .filter((m) => m.show.includes(role))
               .map((menu) => {
                 // KOORDINATOR dropdown slot
@@ -385,7 +439,7 @@ export default function Navbar() {
 
         {/* RIGHT */}
         <div className="hidden md:flex items-center gap-4">
-          {(role === "kunjungan_koordinator" || role === "relawan") && (
+          {(role === "kunjungan_koordinator" || role === "relawan" || role === "admin_apk" || role === "apk_koordinator") && (
             <button
               onClick={handleNotificationClick}
               className="relative p-2 rounded-full hover:bg-blue-800 transition"
@@ -411,7 +465,7 @@ export default function Navbar() {
 
         {/* MOBILE RIGHT ACTIONS */}
         <div className="md:hidden flex items-center gap-3">
-          {(role === "kunjungan_koordinator" || role === "relawan") && (
+          {(role === "kunjungan_koordinator" || role === "relawan" || role === "admin_apk" || role === "apk_koordinator") && (
             <button onClick={handleNotificationClick} className="relative p-1" title="Notifikasi">
               <div
                 className={`transition-transform origin-top ${unreadCount > 0 ? "animate-swing" : "active:animate-swing"
@@ -443,7 +497,7 @@ export default function Navbar() {
       {/* ===== MOBILE MENU ===== */}
       {open && (
         <div className="md:hidden bg-blue-900 px-6 pb-6 space-y-4">
-          {menus
+          {allMenus
             .filter((m) => m.show.includes(role))
             .map((menu) => {
               // KOORDINATOR MOBILE

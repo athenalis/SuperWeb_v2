@@ -51,7 +51,7 @@ class KunjunganController extends Controller
      */
     private function ensureRelawanCanKunjungan($user)
     {
-        if (!$user) return response()->json(['success'=>false,'message'=>'Unauthorized'], 401);
+        if (!$user) return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
 
         if ((int)$user->role_id !== 6) return null; // non-relawan skip
 
@@ -82,7 +82,7 @@ class KunjunganController extends Controller
      */
     private function ensureCanAccessKunjunganFeature($user)
     {
-        if (!$user) return response()->json(['success'=>false,'message'=>'Unauthorized'], 401);
+        if (!$user) return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
 
         if ($this->isAdminPaslon($user) || $this->isKunjunganKoordinator($user)) return null;
 
@@ -445,7 +445,7 @@ class KunjunganController extends Controller
                 return $resp;
             }
 
-            $kunjungan = VisitForm::with(['familyForm.members', 'relawan.koordinator.user', 'paslon'])->find($kunjungan_id);
+            $kunjungan = VisitForm::with(['familyForm.members', 'relawan.koordinatorKunjungan.user', 'paslon'])->find($kunjungan_id);
 
             if (!$kunjungan) {
                 DB::rollBack();
@@ -499,8 +499,8 @@ class KunjunganController extends Controller
 
             // Trigger Notification to Coordinator
             try {
-                if ($kunjungan->relawan && $kunjungan->relawan->koordinator && $kunjungan->relawan->koordinator->user) {
-                    $coordinatorUser = $kunjungan->relawan->koordinator->user;
+                if ($kunjungan->relawan && $kunjungan->relawan->koordinatorKunjungan && $kunjungan->relawan->koordinatorKunjungan->user) {
+                    $coordinatorUser = $kunjungan->relawan->koordinatorKunjungan->user;
 
                     if ($kunjungan->komentar_verifikasi) {
                         $coordinatorUser->notify(new \App\Notifications\VisitUpdated($kunjungan, $user));
@@ -611,49 +611,42 @@ class KunjunganController extends Controller
             ]);
 
             // Strict Role-Based Scoping
-            if ($user && $user->role === 'relawan') {
+            if ($user && (int)$user->role_id === 6) { // relawan
                 if ($user->relawan) {
                     $query->where(function ($q) use ($user) {
                         $q->where('relawan_id', $user->relawan->id)
-                          ->where('created_by', $user->id);
+                            ->orWhere('created_by', $user->id);
                     });
                 } else {
                     $query->where('created_by', $user->id);
                 }
-            } elseif ($user && $user->role === 'kunjungan_koordinator') {
-                if ($request->has('relawan_id')) {
-                    $relawanId = $request->relawan_id;
-                    $targetRelawan = \App\Models\Relawan::find($relawanId);
+            } elseif ($user && (int)$user->role_id === 4) { // kunjungan_koordinator
+                $koordinator = $user->koordinator;
 
-                    if ($targetRelawan && $user->koordinator && $targetRelawan->koordinator_id === $user->koordinator->id) {
-                        $query->where('relawan_id', $relawanId);
-                    } else {
-                        $query->whereRaw('1 = 0');
-                    }
+                if (!$koordinator) {
+                    $query->whereRaw('1=0');
                 } else {
-                    $koordinator = $user->koordinator;
-                    if ($koordinator) {
-                        $query->where(function ($subQ) use ($koordinator) {
-                            $subQ->whereHas('relawan', function ($rq) use ($koordinator) {
-                                $rq->where('koordinator_id', $koordinator->id);
-                            })
-                            ->orWhereIn('created_by', function ($q) use ($koordinator) {
-                                $q->select('users.id')
-                                  ->from('users')
-                                  ->join('relawans', 'relawans.user_id', '=', 'users.id')
-                                  ->where('relawans.koordinator_id', $koordinator->id);
-                            });
-                        });
+                    if ($request->has('relawan_id')) {
+                        $relawanId = $request->relawan_id;
+                        $targetRelawan = \App\Models\Relawan::find($relawanId);
+
+                        if ($targetRelawan && (int)$targetRelawan->koordinator_id === (int)$koordinator->id) {
+                            $query->where('relawan_id', $relawanId);
+                        } else {
+                            $query->whereRaw('1=0');
+                        }
                     } else {
-                        $query->whereRaw('1 = 0');
+                        $query->whereHas('relawan', function ($rq) use ($koordinator) {
+                            $rq->where('koordinator_id', $koordinator->id);
+                        });
                     }
                 }
-            } elseif ($user && $user->role === 'admin_paslon') {
+            } elseif ($user && (int)$user->role_id === 2) { // admin_paslon
                 if ($request->has('relawan_id')) {
                     $query->where('relawan_id', $request->relawan_id);
                 }
             } else {
-                $query->whereRaw('1 = 0');
+                $query->whereRaw('1=0');
             }
 
             if ($request->has('status')) {
@@ -672,7 +665,7 @@ class KunjunganController extends Controller
                 $search = $request->search;
                 $query->where(function ($q) use ($search) {
                     $q->where('nama', 'like', "%{$search}%")
-                      ->orWhere('nik', 'like', "%{$search}%");
+                        ->orWhere('nik', 'like', "%{$search}%");
                 });
             }
 

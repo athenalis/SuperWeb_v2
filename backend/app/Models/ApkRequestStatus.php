@@ -18,6 +18,7 @@ class ApkRequestStatus extends Model
     public const REJECTED  = 'REJECTED';
     public const REVISED   = 'REVISED';
     public const PICKED_UP = 'PICKED_UP';
+    public const ARRIVED   = 'ARRIVED';
     public const DELIVERED = 'DELIVERED';
 
     public function requests()

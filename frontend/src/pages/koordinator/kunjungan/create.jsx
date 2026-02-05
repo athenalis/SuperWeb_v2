@@ -14,7 +14,6 @@ export default function InputKoordinator({ onClose }) {
     nama: "",
     nik: "",
     no_hp: "",
-    tps: "",
     alamat: "",
     province_code: 31,
     city_code: "",
@@ -63,11 +62,6 @@ case "no_hp":
     return "No HP wajib 10–13 digit";
 
   break;
-
-      case "tps":
-        if (!/^\d*$/.test(value)) return "TPS harus angka";
-        if (value.length !== 3) return "TPS wajib 3 digit";
-        break;
 
       case "alamat":
         if (!value.trim()) return "Alamat wajib diisi";
@@ -143,7 +137,6 @@ case "no_hp":
         nama: koordinator.nama,
         nik: koordinator.nik,
         no_hp: koordinator.no_hp,
-        tps: koordinator.tps,
         alamat: koordinator.alamat,
         province_code: koordinator.province_code,
         city_code: koordinator.city_code,
@@ -273,7 +266,6 @@ onSuccess: (res) => {
   
         <form onSubmit={handleSubmit} noValidate className="space-y-5">
   
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Field label="NIK" required error={errors.nik}>
               <input
                 name="nik"
@@ -289,23 +281,23 @@ onSuccess: (res) => {
                     checkNik(form.nik);
                   }
                 }}
-                className="w-full text-lg border border-gray-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400 font-medium"
+                className="w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400"
                 inputMode="numeric"
                 placeholder="Masukkan NIK"
               />
             </Field>
-  
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Field label="Nama Lengkap" required error={errors.nama}>
               <input
                 name="nama"
                 value={form.nama}
                 onChange={handleChange}
-                className="w-full text-lg border border-gray-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400 font-medium"
+                className="w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400"
+                placeholder="Masukkan Nama Lengkap"
               />
             </Field>
-          </div>
   
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Field label="No HP" required error={errors.no_hp}>
               <input
                 name="no_hp"
@@ -316,25 +308,9 @@ onSuccess: (res) => {
                   if (value.length > 14) return;
                   handleChange(e);
                 }}
-                className="w-full text-lg border border-gray-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400 font-medium"
+                className="w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400"
                 inputMode="numeric"
                 placeholder="Cth: 0821xxxx, 62821xxxx, +62821xxxx"
-              />
-            </Field>
-  
-            <Field label="TPS" required error={errors.tps}>
-              <input
-                name="tps"
-                value={form.tps}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  if (!/^\d*$/.test(value)) return;
-                  if (value.length > 3) return;
-                  handleChange(e);
-                }}
-                className="w-full text-lg border border-gray-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400 font-medium"
-                inputMode="numeric"
-                placeholder="Cth: 001"
               />
             </Field>
           </div>
@@ -344,7 +320,7 @@ onSuccess: (res) => {
               name="alamat"
               value={form.alamat}
               onChange={handleChange}
-              className="w-full text-lg border border-gray-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400 font-medium"
+              className="w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400"
               placeholder="Masukkan alamat anda"
             />
           </Field>
@@ -354,7 +330,7 @@ onSuccess: (res) => {
               <select
                 disabled
                 value={31}
-                className={`px-6 py-3 pr-12 ${baseSelect} ${disabledSelect}`}
+                className={`border border-slate-400 px-6 py-3 pr-12 ${baseSelect} ${disabledSelect}`}
               >
                 <option>DKI JAKARTA</option>
               </select>
@@ -407,14 +383,14 @@ onSuccess: (res) => {
             <button
               type="submit"
               disabled={mutation.isLoading}
-              className="bg-blue-900 hover:bg-blue-800 text-white px-6 py-2 rounded-lg font-bold"
+              className="bg-blue-900 hover:bg-blue-800 text-white px-6 py-2 rounded-lg font-semibold"
             >
               {mutation.isLoading ? "Menyimpan..." : "Simpan"}
             </button>
             <button
               type="button"
-              onClick={() => navigate("/koordinator")}
-              className="bg-white-100 px-6 py-2 rounded-lg text-gray-600 hover:underline font-bold"
+              onClick={() => navigate("/koordinator/kunjungan")}
+              className="bg-white-100 px-6 py-2 rounded-lg text-gray-600 hover:underline font-semibold"
             >
               Batal
             </button>
@@ -498,7 +474,7 @@ function SelectField({
           value={value}
           onChange={onChange}
           disabled={disabled}
-          className={`w-full appearance-none border rounded-lg px-6 py-3 pr-12
+          className={`w-full appearance-none border border-slate-400 rounded-lg px-6 py-3 pr-12
                       bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none
                       ${disabled ? "bg-slate-100 cursor-not-allowed" : ""}`}
         >

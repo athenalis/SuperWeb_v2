@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class ApkRequest extends Model
 {
@@ -14,8 +15,13 @@ class ApkRequest extends Model
         'admin_id',
         'courier_id',
         'pickup_address',
+        'pickup_scheduled_at',
         'current_status_id',
         'revision_no',
+    ];
+
+    protected $casts = [
+        'pickup_scheduled_at' => 'datetime', 
     ];
 
     public function status()
@@ -52,5 +58,21 @@ class ApkRequest extends Model
     public function isStatus(string $code): bool
     {
         return $this->status?->code === $code;
+    }
+
+    public function setStatusByCode(string $code, int $changedBy, ?string $note = null): void
+    {
+        $status = ApkRequestStatus::where('code', $code)->firstOrFail();
+
+        $this->update([
+            'current_status_id' => $status->id,
+        ]);
+
+        ApkRequestStatusHistory::create([
+            'apk_request_id' => $this->id,
+            'status_id'      => $status->id,
+            'changed_by'     => $changedBy,
+            'note'           => $note,
+        ]);
     }
 }

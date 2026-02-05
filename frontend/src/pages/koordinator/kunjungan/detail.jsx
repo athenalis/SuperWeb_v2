@@ -103,7 +103,7 @@ export default function KoordinatorDetail() {
         <div className="relative pt-4">
           {/* TITLE – CENTER BENERAN */}
           <h1 className="text-3xl font-bold text-center text-blue-900">
-            Detail Koordinator
+            Detail Koordinator Kunjungan
           </h1>
 
           {/* EDIT BUTTON – TETAP KANAN */}
@@ -125,7 +125,6 @@ export default function KoordinatorDetail() {
             <Field label="Nama" value={data.nama} />
             <Field label="NIK" value={data.nik} />
             <Field label="No HP" value={data.no_hp} />
-            <Field label="TPS" value={data.tps} />
             <Field label="Alamat" value={data.alamat} />
             <Field label="Email Login" value={data.user?.email} />
           </Grid>

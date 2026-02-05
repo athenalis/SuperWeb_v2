@@ -160,7 +160,7 @@ export default function APKIndex() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedKategori, setSelectedKategori] = useState("Semua");
   const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState("masuk"); // masuk | keluar | stok | item
+  const [modalType, setModalType] = useState("masuk"); // masuk | keluar | stok | item | admin_apk
 
   // ===== KPI =====
   const totalItems = dummyItems.length;
@@ -203,7 +203,7 @@ export default function APKIndex() {
         label: "PENERIMAAN",
         desc: "Penerimaan barang",
         icon: "mdi:arrow-down",
-        badge: "bg-blue-50 text-blue-700 border-blue-200",
+        badge: "bg-blue-50 text-blue-700 border-blue-200 font-semibold",
         pill: "bg-blue-100 text-blue-700",
         sign: "+",
       };
@@ -212,18 +212,29 @@ export default function APKIndex() {
       label: "PENGAMBILAN",
       desc: "Pengambilan barang",
       icon: "mdi:arrow-up",
-      badge: "bg-slate-50 text-slate-700 border-slate-200",
+      // ✅ UPDATED: badge dibuat lebih "button-like" (font sama seperti tombol aksi: semibold)
+      badge:
+        "bg-slate-50 text-slate-700 border-slate-200 uppercase tracking-wide font-semibold",
       pill: "bg-slate-100 text-slate-700",
       sign: "-",
     };
   };
 
+  // ✅ UPDATED: card putih pembungkus tombol dihilangkan (tetap posisi & susunan sama)
+  // - background & border dihapus
+  // - padding dipertahankan biar spacing masih enak
+  const actionsWrapClass = "px-1 py-1";
+
+  // ✅ tombol aksi tetap seragam, tapi sedikit dipoles biar lebih clean (tanpa ubah fungsi)
+  const actionBtnClass =
+    "flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-semibold " +
+    "hover:bg-blue-700 transition shadow-sm ring-1 ring-blue-600/10";
+
   return (
-    <div className="min-h-screen bg-slate-50 p-6 space-y-6">
+    <div className="min-h-screen bg-slate-50 border border-slate-200 rounded-xl p-8 space-y-6">
       {/* HEADER */}
       <div className="mb-2">
-        <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3">
-          <Icon icon="mdi:warehouse" className="text-blue-700" width={36} />
+        <h1 className="text-3xl font-bold text-blue-900 flex items-center gap-3">
           Gudang Alat Peraga Kampanye
         </h1>
         <p className="text-slate-500 mt-1">Kelola inventaris alat kampanye dengan mudah</p>
@@ -232,26 +243,11 @@ export default function APKIndex() {
       {/* KPI CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
-          title="Total Jenis Item"
-          value={totalItems}
-          icon="mdi:package-variant-closed"
-          iconBg="bg-blue-50"
-          iconColor="text-blue-600"
-        />
-        <KpiCard
           title="Total Stok"
           value={totalStok.toLocaleString("id-ID")}
-          icon="mdi:counter"
+          icon="material-symbols:home-storage-rounded"
           iconBg="bg-blue-50"
           iconColor="text-blue-600"
-        />
-        <KpiCard
-          title="Total Nilai Aset"
-          value={formatRupiah(totalNilai)}
-          icon="mdi:cash-multiple"
-          iconBg="bg-blue-50"
-          iconColor="text-blue-600"
-          valueClass="text-2xl"
         />
         <KpiCard
           title="Stok Rendah"
@@ -260,93 +256,71 @@ export default function APKIndex() {
           iconBg="bg-red-50"
           iconColor="text-red-500"
           valueClass="text-3xl text-red-600"
-          footer="item perlu restock"
+        />
+        <KpiCard
+          title="Total Budget"
+          value={formatRupiah(totalNilai)}
+          icon="solar:wallet-bold"
+          iconBg="bg-blue-50"
+          iconColor="text-blue-600"
+          valueClass="text-2xl"
+        />
+        <KpiCard
+          title="Total Buget Terpakai"
+          value={formatRupiah(totalNilai)}
+          icon="mdi:cash-multiple"
+          iconBg="bg-blue-50"
+          iconColor="text-blue-600"
+          valueClass="text-2xl"
         />
       </div>
 
-      {/* SEARCH + FILTER + ACTION */}
-      <div className="bg-white rounded-xl p-5 border border-slate-200">
-        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-          {/* Search & Filter */}
-          <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
-            {/* Semantic Search (keyword search versi dummy) */}
-            <div className="relative">
-              <Icon
-                icon="mdi:magnify"
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                width={20}
-              />
-              <input
-                type="text"
-                placeholder="Cari item..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full sm:w-64 pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg
-                           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-              />
-            </div>
+      {/* ✅ UPDATED: card putih pembungkus tombol dihilangkan, posisi tombol tetap */}
+      <div className={actionsWrapClass}>
+        <div className="flex flex-wrap gap-3 justify-start">
+          <button
+            onClick={() => {
+              setModalType("masuk");
+              setShowModal(true);
+            }}
+            className={actionBtnClass}
+          >
+            <Icon icon="gg:arrow-down-r" width={22} />
+            Barang Masuk
+          </button>
 
-            {/* Filter kategori */}
-            <select
-              value={selectedKategori}
-              onChange={(e) => setSelectedKategori(e.target.value)}
-              className="px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500
-                         bg-white transition cursor-pointer hover:bg-slate-50"
-            >
-              {kategoriList.map((kat) => (
-                <option key={kat} value={kat}>
-                  {kat}
-                </option>
-              ))}
-            </select>
-          </div>
+          <button
+            onClick={() => {
+              setModalType("keluar");
+              setShowModal(true);
+            }}
+            className={actionBtnClass}
+          >
+            <Icon icon="gg:arrow-up-r" width={22} />
+            Barang Keluar
+          </button>
 
-          {/* Actions */}
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={() => {
-                setModalType("masuk");
-                setShowModal(true);
-              }}
-              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
-            >
-              <Icon icon="mdi:arrow-down-bold-box" width={20} />
-              Barang Masuk
-            </button>
+          <button
+            onClick={() => {
+              setModalType("stok");
+              setShowModal(true);
+            }}
+            className={actionBtnClass}
+          >
+            <Icon icon="ci:list-add" width={22} />
+            Tambah Stok
+          </button>
 
-            <button
-              onClick={() => {
-                setModalType("keluar");
-                setShowModal(true);
-              }}
-              className="flex items-center gap-2 px-5 py-2.5 bg-white border border-blue-600 text-blue-600 rounded-lg font-medium hover:bg-blue-50 transition-colors"
-            >
-              <Icon icon="mdi:arrow-up-bold-box" width={20} />
-              Barang Keluar
-            </button>
-
-            <button
-              onClick={() => {
-                setModalType("stok");
-                setShowModal(true);
-              }}
-              className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors"
-            >
-              <Icon icon="mdi:package-variant-plus" width={20} />
-              Tambah Stok
-            </button>
-
-            <button
-              onClick={() => {
-                setModalType("item");
-                setShowModal(true);
-              }}
-              className="flex items-center gap-2 px-5 py-2.5 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-900 transition-colors"
-            >
-              <Icon icon="mdi:plus" width={20} />
-              Tambah Item
-            </button>
-          </div>
+          <button
+            onClick={() => {
+              setModalType("item");
+              setShowModal(true);
+            }}
+            className={actionBtnClass}
+          >
+            <Icon icon="material-symbols:box-add-outline-rounded" width={22} />
+            Tambah Item
+          </button>
         </div>
       </div>
 
@@ -354,11 +328,60 @@ export default function APKIndex() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* INVENTORY TABLE */}
         <div className="xl:col-span-2 bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="p-5 border-b border-slate-200">
-            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <Icon icon="mdi:view-list" className="text-blue-600" width={24} />
-              Daftar Inventaris
-            </h2>
+          <div className="p-6 border-b border-slate-200">
+            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+              {/* Title */}
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                  <Icon
+                    icon="material-symbols:inventory-rounded"
+                    className="text-blue-600"
+                    width={25}
+                  />
+                  Daftar Inventaris
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">Daftar barang yang ada di gudang</p>
+              </div>
+
+              {/* Search + Filter (kanan, sebaris dengan judul) */}
+              <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto lg:justify-end">
+                <div className="relative w-full sm:w-64">
+                  <Icon
+                    icon="mdi:magnify"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    width={20}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Cari item..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg
+                               focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition bg-white"
+                  />
+                </div>
+
+                <div className="relative group">
+                  <Icon
+                    icon="mdi:chevron-down"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-focus-within:text-blue-600 transition-colors"
+                    width="22"
+                  />
+                  <select
+                    value={selectedKategori}
+                    onChange={(e) => setSelectedKategori(e.target.value)}
+                    className="w-full appearance-none sm:w-44 px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500
+                              bg-white transition cursor-pointer hover:bg-slate-50 text-slate-800 : text-slate-400"
+                  >
+                    {kategoriList.map((kat) => (
+                      <option key={kat} value={kat}>
+                        {kat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -392,7 +415,11 @@ export default function APKIndex() {
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden">
-                          <img src={item.gambar} alt={item.nama} className="w-full h-full object-cover" />
+                          <img
+                            src={item.gambar}
+                            alt={item.nama}
+                            className="w-full h-full object-cover"
+                          />
                         </div>
                         <div>
                           <p className="font-semibold text-slate-800 text-sm">{item.nama}</p>
@@ -429,22 +456,16 @@ export default function APKIndex() {
                     <td className="px-5 py-4">
                       <div className="flex items-center justify-center gap-1">
                         <button
-                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition"
+                          className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded transition"
                           title="Detail"
                         >
-                          <Icon icon="mdi:eye" width={18} />
+                          <Icon icon="solar:eye-linear" width={18} />
                         </button>
                         <button
-                          className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded transition"
-                          title="Edit"
-                        >
-                          <Icon icon="mdi:pencil" width={18} />
-                        </button>
-                        <button
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                          className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded transition"
                           title="Hapus"
                         >
-                          <Icon icon="mdi:delete" width={18} />
+                          <Icon icon="mynaui:trash" width={18} />
                         </button>
                       </div>
                     </td>
@@ -466,8 +487,8 @@ export default function APKIndex() {
         {/* RECENT TRANSACTIONS */}
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden h-fit">
           <div className="p-5 border-b border-slate-200">
-            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <Icon icon="mdi:history" className="text-blue-600" width={24} />
+            <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+              <Icon icon="mdi:history" className="text-blue-600" width={25} />
               Histori Terakhir
             </h2>
             <p className="text-xs text-slate-500 mt-1">
@@ -489,10 +510,15 @@ export default function APKIndex() {
                       <div>
                         <div className="flex items-center gap-2">
                           <p className="font-semibold text-slate-800 text-sm">{tx.item}</p>
-                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${meta.badge}`}>
+
+                          {/* ✅ UPDATED: font & feel label PENGAMBILAN/PENERIMAAN jadi mirip tombol (semibold) */}
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full border ${meta.badge}`}
+                          >
                             {meta.label}
                           </span>
                         </div>
+
                         <p className="text-xs text-slate-500">
                           {meta.desc} • {tx.tanggal}
                         </p>
@@ -524,13 +550,7 @@ export default function APKIndex() {
       </div>
 
       {/* MODAL */}
-      {showModal && (
-        <Modal
-          modalType={modalType}
-          onClose={() => setShowModal(false)}
-          items={dummyItems}
-        />
-      )}
+      {showModal && <Modal modalType={modalType} onClose={() => setShowModal(false)} items={dummyItems} />}
     </div>
   );
 }
@@ -557,7 +577,7 @@ function KpiCard({
           {footer && <p className="text-xs text-slate-400">{footer}</p>}
         </div>
         <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${iconBg}`}>
-          <Icon icon={icon} width={24} className={iconColor} />
+          <Icon icon={icon} width={25} className={iconColor} />
         </div>
       </div>
     </div>
@@ -581,13 +601,10 @@ function Modal({ modalType, onClose, items }) {
       ? "mdi:arrow-up-bold-box"
       : "mdi:plus-box";
 
-  const sourceLabel =
-    modalType === "masuk" || modalType === "stok" ? "Sumber" : "Tujuan";
+  const sourceLabel = modalType === "masuk" || modalType === "stok" ? "Sumber" : "Tujuan";
 
   const sourcePlaceholder =
-    modalType === "masuk" || modalType === "stok"
-      ? "Nama supplier / sumber"
-      : "Tujuan distribusi";
+    modalType === "masuk" || modalType === "stok" ? "Nama supplier / sumber" : "Tujuan distribusi";
 
   const showItemSelect = modalType !== "item";
 
@@ -611,9 +628,7 @@ function Modal({ modalType, onClose, items }) {
         <div className="p-6 space-y-4">
           {showItemSelect && (
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">
-                Pilih Item
-              </label>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">Pilih Item</label>
               <select className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
                 <option value="">-- Pilih Item --</option>
                 {items.map((item) => (
@@ -626,9 +641,7 @@ function Modal({ modalType, onClose, items }) {
           )}
 
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
-              Jumlah
-            </label>
+            <label className="block text-sm font-semibold text-slate-700 mb-1">Jumlah</label>
             <input
               type="number"
               placeholder="Masukkan jumlah"
@@ -637,9 +650,7 @@ function Modal({ modalType, onClose, items }) {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
-              {sourceLabel}
-            </label>
+            <label className="block text-sm font-semibold text-slate-700 mb-1">{sourceLabel}</label>
             <input
               type="text"
               placeholder={sourcePlaceholder}
@@ -648,9 +659,7 @@ function Modal({ modalType, onClose, items }) {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
-              Petugas
-            </label>
+            <label className="block text-sm font-semibold text-slate-700 mb-1">Petugas</label>
             <input
               type="text"
               placeholder="Nama petugas"
@@ -659,9 +668,7 @@ function Modal({ modalType, onClose, items }) {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
-              Catatan (opsional)
-            </label>
+            <label className="block text-sm font-semibold text-slate-700 mb-1">Catatan (opsional)</label>
             <textarea
               rows={2}
               placeholder="Tambahkan catatan..."

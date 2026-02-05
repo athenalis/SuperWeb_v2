@@ -31,11 +31,11 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById("root")).render(
   <BrowserRouter>
     <QueryClientProvider client={queryClient}>
-      <Toaster position="top-center" 
-              containerStyle={{
-              zIndex: 9999,
-              }}
-        reverseOrder={false} />
+      <Toaster
+        position="top-center"
+        containerStyle={{ zIndex: 10000 }}
+        reverseOrder={false}
+      />
       <App />
     </QueryClientProvider>
   </BrowserRouter>

@@ -1719,6 +1719,12 @@ const StepMobileBiodata = forwardRef(({ onNext }, ref) => {
 });
 
 function Step3({ kunjunganId, paslon, onBack, onComplete }) {
+  const paslonName =
+    paslon?.nama ||
+    paslon?.name ||
+    paslon?.label ||
+    "pasangan calon";
+    
   const [answers, setAnswers] = useState({
     tau_paslon: 0,
     tau_informasi: 0,
@@ -1825,17 +1831,17 @@ function Step3({ kunjunganId, paslon, onBack, onComplete }) {
   };
 
   const questions = [
-    { key: "tau_paslon", label: "Saya mengenal ${paslonName} yang maju dalam pemilihan gubernur ini." },
+    { key: "tau_paslon", label: `Saya mengenal ${paslonName} yang maju dalam pemilihan gubernur ini.` },
     { key: "tau_informasi", label: "Informasi mengenai pemilihan gubernur saat ini sudah saya pahami dengan cukup jelas." },
-    { key: "tau_visi_misi", label: "Saya mengetahui visi dan misi ${paslonName} yang maju dalam pemilihan gubernur." },
+    { key: "tau_visi_misi", label: `Saya mengetahui visi dan misi ${paslonName} yang maju dalam pemilihan gubernur.` },
     { key: "tau_program_kerja", label: "Program kerja pasangan calon menjadi pertimbangan utama saya dalam menentukan pilihan." },
-    { key: "tau_rekam_jejak", label: "Rekam jejak digital ${paslonName} memengaruhi keputusan saya dalam memilih." },
+    { key: "tau_rekam_jejak", label: `Rekam jejak digital ${paslonName} memengaruhi keputusan saya dalam memilih.` },
     { key: "pernah_dikunjungi", label: "Pernah dikunjungi sebelumnya oleh relawan atau tim sukses?", type: "yesno" },
-    { key: "percaya", label: "Saya percaya pasangan calon ${paslonName} memiliki kemampuan untuk memimpin daerah dengan baik." },
+    { key: "percaya", label: `Saya percaya pasangan calon ${paslonName} memiliki kemampuan untuk memimpin daerah dengan baik.` },
     { key: "harapan", label: "Saya berharap pemimpin terpilih nanti dapat membawa perubahan yang lebih baik bagi daerah ini.", type: "text" },
-    { key: "pertimbangan", label: "Saya bersedia mempertimbangkan atau memilih ${paslonName} apabila programnya sesuai dengan kebutuhan daerah saya." },
-    { key: "ingin_memilih", label: "Saya bersedia memilih ${paslonName} pada pemilihan gubernur mendatang." },
-  ];
+    { key: "pertimbangan", label: `Saya bersedia mempertimbangkan atau memilih ${paslonName} apabila programnya sesuai dengan kebutuhan daerah saya.` },
+    { key: "ingin_memilih", label: `Saya bersedia memilih ${paslonName} pada pemilihan gubernur mendatang.` },
+  ];  
 
   const likertOptions = [
     { value: 4, label: "Sangat Setuju", color: "bg-blue-100 text-blue-700 border-blue-200" },

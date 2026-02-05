@@ -1044,11 +1044,15 @@ export default function CreateContent() {
 
                             <Field label="Budget Ads">
                               <input
-                                type="number"
+                                type="text"
+                                inputMode="numeric"
                                 className={baseInput}
                                 placeholder="Masukkan budget ads"
-                                value={form.ads_by_platform?.[pid]?.budget_ads || ""}
-                                onChange={(e) => handleAdsChange(pid, "budget_ads", e.target.value)}
+                                value={formatRupiahInput(form.ads_by_platform?.[pid]?.budget_ads || "")}
+                                onChange={(e) => {
+                                  const prevVal = form.ads_by_platform?.[pid]?.budget_ads || "";
+                                  handleAdsChange(pid, "budget_ads", parseRupiahInput(e.target.value, prevVal));
+                                }}
                               />
                             </Field>
                           </div>

@@ -63,7 +63,7 @@ export default function RelawanApk() {
 
   // ================= FETCH DATA =================
   const fetchRelawanApk = async () => {
-    const res = await api.get("/relawan-apk", {
+    const res = await api.get("/relawan/apk", {
       params: activeFilters,
     });
     const result = res.data.data;
@@ -127,19 +127,35 @@ export default function RelawanApk() {
   // ================= ACTIONS (EXPORT/IMPORT/DELETE) =================
   const handleConfirmExport = async () => {
     if (!exportPassword) return toast.error("Masukkan password terlebih dahulu");
-
     const toastId = "export-relawan-apk";
+
     try {
       setExporting(true);
       toast.loading("Menyiapkan file Excel...", { id: toastId });
 
       const res = await api.post(
-        "/relawan-apk/export-all",
+        "/relawan/export-apk",
         { password: exportPassword },
-        { responseType: "blob" }
+        { 
+          responseType: "blob",
+          validateStatus: (status) => status < 500,
+        }
       );
 
-      const url = window.URL.createObjectURL(new Blob([res.data]));
+      // ✅ kalau ternyata backend ngirim JSON error, baca dulu
+      const contentType = res.headers["content-type"];
+      if (contentType?.includes("application/json")) {
+        const text = await res.data.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { message: text };
+        }
+        throw new Error(data?.message || "Export gagal");
+      }
+
+      const url = window.URL.createObjectURL(res.data);
       const link = document.createElement("a");
       link.href = url;
 
@@ -155,17 +171,12 @@ export default function RelawanApk() {
 
       toast.success("Export berhasil", { id: toastId });
       closeExportModal();
-    } catch (err) {
-      toast.error(
-        err.response?.status === 422
-          ? err.response?.data?.message
-          : "Gagal export",
-        { id: toastId }
-      );
-    } finally {
-      setExporting(false);
-    }
-  };
+        } catch (err) {
+        toast.error(err?.message || "Gagal export", { id: toastId }); // ✅ pasti ada teks
+        } finally {
+          setExporting(false);
+        }
+      };
 
   const closeExportModal = () => {
     setShowPasswordModal(false);
@@ -182,7 +193,7 @@ export default function RelawanApk() {
     formData.append("file", file);
 
     try {
-      const res = await api.post("/relawan-apk/import", formData, {
+      const res = await api.post("/relawan/import/apk", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
@@ -245,6 +256,8 @@ export default function RelawanApk() {
     }
   };
 
+    const roleId = Number(localStorage.getItem("role_id"));
+    const isAdminPaslon = roleId === 2;
   return (
     <div className="space-y-6">
       {/* ================= HEADER ================= */}
@@ -253,7 +266,7 @@ export default function RelawanApk() {
           Data Relawan APK
         </h1>
 
-        {role !== "admin" && (
+        {!isAdminPaslon && (
           <div className="flex flex-col sm:flex-row gap-3">
             <button
               onClick={() => setOpenImport(true)}
@@ -759,8 +772,7 @@ export default function RelawanApk() {
         )}
 
       {/* Modal Import */}
-      {openImport &&
-        createPortal(
+      {!isAdminPaslon && openImport && createPortal(
           <div className="fixed inset-0 z-50 flex items-center justify-center">
             <div
               className="absolute inset-0 bg-black/50 backdrop-blur-sm"

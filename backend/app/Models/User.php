@@ -5,7 +5,7 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Models\Role;
 use App\Models\Relawan;
-use App\Models\Coordinator;
+use App\Models\CourierApk;
 use App\Models\CoordinatorApk;
 use App\Models\CoordinatorVisit;
 use Laravel\Sanctum\HasApiTokens;
@@ -62,7 +62,7 @@ class User extends Authenticatable
 
     public function apkKoordinator()
     {
-        return $this->hasOne(CoordinatorApk::class);
+        return $this->hasOne(CoordinatorApk::class, 'user_id', 'id');
     }
 
     public function relawan()
@@ -94,14 +94,13 @@ class User extends Authenticatable
 
     public function adminApk()
     {
-        return $this->hasOne(\App\Models\AdminApk::class, 'user_id', 'id');
+        return $this->hasOne(AdminApk::class, 'user_id', 'id');
     }
 
     public function apkKurir()
     {
-        return $this->hasOne(\App\Models\CourierApk::class, 'user_id', 'id');
+        return $this->hasOne(CourierApk::class, 'user_id', 'id');
     }
-
 
     public function getRoleNameAttribute()
     {
@@ -124,5 +123,15 @@ class User extends Authenticatable
         return $this->hasOne(UserCredential::class, 'user_id', 'id')
             ->where('is_active', 1)
             ->latest('id');
+    }
+
+    public function hasRole(string $slug): bool
+    {
+        // kalau relasi role ada
+        if ($this->relationLoaded('role') || method_exists($this, 'role')) {
+            return $this->role?->role === $slug; 
+        }
+
+        return false;
     }
 }

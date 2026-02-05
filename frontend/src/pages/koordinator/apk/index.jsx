@@ -152,6 +152,29 @@ export default function KoordinatorApk() {
   };
 
   // ================= EXPORT =================
+  // ✅ helper: ambil filename dari Content-Disposition (fallback aman)
+  const getFilenameFromDisposition = (disposition) => {
+    if (!disposition) return null;
+
+    // contoh:
+    // content-disposition: attachment; filename=KOORDINATOR_APK_03.xlsx
+    // content-disposition: attachment; filename="KOORDINATOR_APK_03.xlsx"
+    // content-disposition: attachment; filename*=UTF-8''KOORDINATOR_APK_03.xlsx
+    const filenameStar = disposition.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
+    if (filenameStar && filenameStar[1]) {
+      try {
+        return decodeURIComponent(filenameStar[1].trim().replace(/(^"|"$)/g, ""));
+      } catch {
+        return filenameStar[1].trim().replace(/(^"|"$)/g, "");
+      }
+    }
+
+    const filename = disposition.match(/filename\s*=\s*("?)([^";]+)\1/i);
+    if (filename && filename[2]) return filename[2].trim();
+
+    return null;
+  };
+
   const exportAllKoordinatorApk = async () => {
     if (!exportPassword) {
       toast.error("Masukkan password terlebih dahulu");
@@ -165,7 +188,7 @@ export default function KoordinatorApk() {
       toast.loading("Menyiapkan file Excel...", { id: toastId });
 
       const res = await api.post(
-        "/koordinator-apk/apk/export",
+        "/koordinator-apk/export",
         { password: exportPassword },
         {
           responseType: "blob",
@@ -183,7 +206,14 @@ export default function KoordinatorApk() {
       const url = window.URL.createObjectURL(res.data);
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", "koordinator_apk_all.xlsx");
+
+      // ✅ ambil nama file dari backend (biar ga "koordinator_apk_all.xlsx" lagi)
+      const disposition = res.headers["content-disposition"];
+      const serverFilename =
+        getFilenameFromDisposition(disposition) || "KOORDINATOR_APK.xlsx";
+
+      link.setAttribute("download", serverFilename);
+
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -203,15 +233,19 @@ export default function KoordinatorApk() {
   // ================= IMPORT =================
   const importKoordinatorApk = async () => {
     if (!file) {
-      alert("Pilih file terlebih dahulu");
+      toast.error("Pilih file terlebih dahulu");
       return;
     }
+
+    const toastId = "import-koordinator-apk";
 
     setImporting(true);
     const formData = new FormData();
     formData.append("file", file);
 
     try {
+      toast.loading("Mengimport data koordinator APK...", { id: toastId });
+
       const res = await api.post("/koordinator-apk/import", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
@@ -220,12 +254,25 @@ export default function KoordinatorApk() {
       refetch();
 
       const successCount = res.data.data?.successCount ?? 0;
-      if (successCount > 0) {
-        alert(`Berhasil menambahkan ${successCount} koordinator APK!`);
+      const failedCount = res.data.data?.failed_rows?.length ?? 0;
+
+      if (successCount > 0 && failedCount === 0) {
+        toast.success(`Berhasil import ${successCount} koordinator APK`, { id: toastId });
         closeImportModal();
+      } else if (successCount > 0 && failedCount > 0) {
+        toast.success(
+          `Import selesai: ${successCount} berhasil, ${failedCount} gagal. Cek detail di bawah.`,
+          { id: toastId }
+        );
+        // modal jangan ditutup biar user bisa lihat failed_rows
+      } else {
+        toast.error("Tidak ada data yang berhasil diimport", { id: toastId });
       }
-    } catch {
-      alert("Gagal import data");
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || err?.message || "Gagal import data",
+        { id: toastId }
+      );
     } finally {
       setImporting(false);
     }
@@ -263,6 +310,9 @@ export default function KoordinatorApk() {
     },
   });
 
+  const roleId = Number(localStorage.getItem("role_id"));
+  const isAdminPaslon = roleId === 2;
+
   return (
     <div className="space-y-6">
       {/* ================= HEADER ================= */}
@@ -272,19 +322,23 @@ export default function KoordinatorApk() {
         </h1>
 
         <div className="flex flex-col sm:flex-row gap-3">
-          <button
-            onClick={() => setOpenImport(true)}
-            className="bg-blue-500/15 text-blue-800 border border-blue-200/40 px-4 py-2 rounded-lg hover:bg-blue-500/25"
-          >
-            Import Data Koordinator
-          </button>
+          {!isAdminPaslon && (
+            <>
+              <button
+                onClick={() => setOpenImport(true)}
+                className="bg-blue-500/15 text-blue-800 border border-blue-200/40 px-4 py-2 rounded-lg hover:bg-blue-500/25"
+              >
+                Import Data Koordinator
+              </button>
 
-          <button
-            onClick={() => navigate("/koordinator/apk/create")}
-            className="bg-blue-900 text-white px-6 py-3 rounded-lg hover:bg-blue-800"
-          >
-            Tambah Koordinator +
-          </button>
+              <button
+                onClick={() => navigate("/koordinator/apk/create")}
+                className="bg-blue-900 text-white px-6 py-3 rounded-lg hover:bg-blue-800"
+              >
+                Tambah Koordinator +
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -674,7 +728,6 @@ export default function KoordinatorApk() {
                 Hapus Koordinator
               </h2>
 
-              {/* ✅ kalau kamu punya constraint relawan_count di APK, boleh keep. kalau nggak, hapus block ini */}
               {deleteTarget.relawans_count > 0 ? (
                 <div className="text-slate-700">
                   <p className="mb-4">
@@ -738,82 +791,81 @@ export default function KoordinatorApk() {
         )}
 
       {/* ================= MODAL IMPORT ================= */}
-      {openImport &&
-        createPortal(
-          <div className="fixed inset-0 z-50 flex items-center justify-center">
-            <div
-              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+      {!isAdminPaslon && openImport && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={closeImportModal}
+          />
+
+          <div className="relative bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 z-10">
+            <button
               onClick={closeImportModal}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
+            >
+              <Icon icon="mdi:close" width="22" />
+            </button>
+
+            <h2 className="text-3xl text-blue-900 font-semibold mb-2">
+              Import Data Koordinator
+            </h2>
+
+            <ol className="list-decimal list-inside text-md text-slate-600 space-y-1 mb-5">
+              <li>Download template Excel</li>
+              <li>Isi data sesuai format</li>
+              <li>Upload file lalu klik Import</li>
+            </ol>
+
+            <button
+              className="w-full border border-blue-600 text-blue-600 py-2.5 rounded-lg mb-7 hover:bg-blue-50"
+              onClick={downloadTemplate}
+            >
+              Download Template Excel
+            </button>
+
+            <label className="text-md font-medium mb-2 block">Upload File Excel</label>
+
+            <input
+              type="file"
+              accept=".xls,.xlsx"
+              className="w-full border rounded-lg px-4 py-2 text-sm mb-4"
+              onChange={(e) => setFile(e.target.files[0])}
             />
 
-            <div className="relative bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 z-10">
-              <button
-                onClick={closeImportModal}
-                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
-              >
-                <Icon icon="mdi:close" width="22" />
-              </button>
+            <button
+              onClick={importKoordinatorApk}
+              className="w-full bg-blue-900 text-white py-3 rounded-lg hover:bg-blue-800"
+              disabled={importing}
+            >
+              {importing ? "Mengimport..." : "Import Data"}
+            </button>
 
-              <h2 className="text-3xl text-blue-900 font-semibold mb-2">
-                Import Data Koordinator
-              </h2>
+            {importResult && importResult.failed_rows?.length > 0 && (
+              <div className="mt-6 max-h-64 overflow-y-auto border rounded-lg p-4 bg-red-50">
+                <h3 className="font-semibold text-red-700 mb-3">
+                  Gagal Import ({importResult.failed_rows.length})
+                </h3>
 
-              <ol className="list-decimal list-inside text-md text-slate-600 space-y-1 mb-5">
-                <li>Download template Excel</li>
-                <li>Isi data sesuai format</li>
-                <li>Upload file lalu klik Import</li>
-              </ol>
-
-              <button
-                className="w-full border border-blue-600 text-blue-600 py-2.5 rounded-lg mb-7 hover:bg-blue-50"
-                onClick={downloadTemplate}
-              >
-                Download Template Excel
-              </button>
-
-              <label className="text-md font-medium mb-2 block">Upload File Excel</label>
-
-              <input
-                type="file"
-                accept=".xls,.xlsx"
-                className="w-full border rounded-lg px-4 py-2 text-sm mb-4"
-                onChange={(e) => setFile(e.target.files[0])}
-              />
-
-              <button
-                onClick={importKoordinatorApk}
-                className="w-full bg-blue-900 text-white py-3 rounded-lg hover:bg-blue-800"
-                disabled={importing}
-              >
-                {importing ? "Mengimport..." : "Import Data"}
-              </button>
-
-              {importResult && importResult.failed_rows?.length > 0 && (
-                <div className="mt-6 max-h-64 overflow-y-auto border rounded-lg p-4 bg-red-50">
-                  <h3 className="font-semibold text-red-700 mb-3">
-                    Gagal Import ({importResult.failed_rows.length})
-                  </h3>
-
-                  <ul className="space-y-3 text-sm">
-                    {importResult.failed_rows.map((row, i) => (
-                      <li key={i} className="border-b pb-2">
-                        <div className="font-medium text-red-800">
-                          Baris {row.row} — {row.nama}
-                        </div>
-                        <ul className="list-disc ml-5 text-red-600">
-                          {row.errors.map((err, idx) => (
-                            <li key={idx}>{err}</li>
-                          ))}
-                        </ul>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </div>,
-          document.getElementById("modal-root")
-        )}
+                <ul className="space-y-3 text-sm">
+                  {importResult.failed_rows.map((row, i) => (
+                    <li key={i} className="border-b pb-2">
+                      <div className="font-medium text-red-800">
+                        Baris {row.row} — {row.nama}
+                      </div>
+                      <ul className="list-disc ml-5 text-red-600">
+                        {row.errors.map((err, idx) => (
+                          <li key={idx}>{err}</li>
+                        ))}
+                      </ul>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>,
+        document.getElementById("modal-root")
+      )}
 
       {/* ================= MODAL EXPORT PASSWORD ================= */}
       {openExportModal &&

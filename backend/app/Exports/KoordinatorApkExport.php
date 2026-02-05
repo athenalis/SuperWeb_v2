@@ -12,6 +12,7 @@ use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithColumnFormatting;
 use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 
 class KoordinatorApkExport implements
     FromCollection,
@@ -51,6 +52,7 @@ class KoordinatorApkExport implements
             ->whereNotNull('k.user_id')
             ->select([
                 'k.nama as nama',
+                DB::raw('COALESCE(k.nik, u.nik) as nik'),
                 'u.email as email',
                 'uc.encrypted_password as encrypted_password',
                 'k.no_hp as no_hp',
@@ -70,11 +72,18 @@ class KoordinatorApkExport implements
                 }
             }
 
+            $nik = (string) ($row->nik ?? '');
+            $nik = preg_replace('/\D+/', '', $nik) ?: '-';
+
+            $noHp = (string) ($row->no_hp ?? '');
+            $noHp = preg_replace('/\D+/', '', $noHp) ?: '-';
+
             return [
                 $row->nama ?? '-',
+                $nik,
                 $row->email ?? '-',
                 $password,
-                (string) ($row->no_hp ?? '-'),
+                $noHp,
                 $row->kelurahan ?? '-',
                 $row->alamat ?? '-',
             ];
@@ -83,13 +92,14 @@ class KoordinatorApkExport implements
 
     public function headings(): array
     {
-        return ['Nama', 'Email', 'Password', 'No HP', 'Kelurahan', 'Alamat'];
+        return ['Nama', 'NIK', 'Email', 'Password', 'No HP', 'Kelurahan', 'Alamat'];
     }
 
     public function columnFormats(): array
     {
         return [
-            'D' => NumberFormat::FORMAT_TEXT,
+            'B' => NumberFormat::FORMAT_TEXT, // NIK
+            'E' => NumberFormat::FORMAT_TEXT, // No HP
         ];
     }
 
@@ -97,8 +107,22 @@ class KoordinatorApkExport implements
     {
         return [
             AfterSheet::class => function (AfterSheet $event) {
-                $event->sheet->getStyle('A1:F1')->getFont()->setBold(true);
-                $event->sheet->getStyle('A:F')->getAlignment()->setWrapText(true);
+                $event->sheet->getStyle('A1:G1')->getFont()->setBold(true);
+                $event->sheet->getStyle('A:G')->getAlignment()->setWrapText(true);
+
+                $sheet = $event->sheet->getDelegate();
+                $highestRow = $sheet->getHighestRow();
+
+                $sheet->getStyle("B2:B{$highestRow}")->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
+                $sheet->getStyle("E2:E{$highestRow}")->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
+
+                for ($row = 2; $row <= $highestRow; $row++) {
+                    $nikVal = (string) $sheet->getCell("B{$row}")->getValue();
+                    $hpVal  = (string) $sheet->getCell("E{$row}")->getValue();
+
+                    $sheet->setCellValueExplicit("B{$row}", $nikVal, DataType::TYPE_STRING);
+                    $sheet->setCellValueExplicit("E{$row}", $hpVal, DataType::TYPE_STRING);
+                }
             },
         ];
     }

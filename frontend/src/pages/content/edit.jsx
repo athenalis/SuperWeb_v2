@@ -87,6 +87,9 @@ export default function EditContent() {
   const [openPlatform, setOpenPlatform] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // ✅ NEW: biar page gak blank kalau backend 500
+  const [pageError, setPageError] = useState("");
+
   const [platforms, setPlatforms] = useState([]);
   const [statusOptions, setStatusOptions] = useState([]);
   const [contentTypesByPlatform, setContentTypesByPlatform] = useState({});
@@ -121,9 +124,36 @@ export default function EditContent() {
      MASTER DATA
   ========================== */
   useEffect(() => {
-    api.get("/platforms").then((r) => setPlatforms(r.data));
-    api.get("/content-statuses").then((r) => setStatusOptions(r.data));
-    api.get("/content-types").then((r) => setContentTypesByPlatform(r.data));
+    // ✅ tambahin catch biar gak silent error
+    api
+      .get("/platforms")
+      .then((r) => setPlatforms(r.data))
+      .catch((err) => {
+        console.error("GET /platforms Error:", err.response?.data || err.message);
+        toast.error("Gagal memuat master platform");
+      });
+
+    api
+      .get("/content-statuses")
+      .then((r) => setStatusOptions(r.data))
+      .catch((err) => {
+        console.error(
+          "GET /content-statuses Error:",
+          err.response?.data || err.message
+        );
+        toast.error("Gagal memuat master status");
+      });
+
+    api
+      .get("/content-types")
+      .then((r) => setContentTypesByPlatform(r.data))
+      .catch((err) => {
+        console.error(
+          "GET /content-types Error:",
+          err.response?.data || err.message
+        );
+        toast.error("Gagal memuat master content types");
+      });
   }, []);
 
   /* =========================
@@ -145,11 +175,22 @@ export default function EditContent() {
     const params = form.platform_ids.length
       ? { platform_ids: form.platform_ids }
       : {};
-    api.get("/influencers/all", { params }).then((r) => {
-      const data = r.data.data || r.data;
-      console.log("Influencers data loaded:", data);
-      setInfluencers(Array.isArray(data) ? data : []);
-    });
+    api
+      .get("/influencers/all", { params })
+      .then((r) => {
+        const data = r.data.data || r.data;
+        console.log("Influencers data loaded:", data);
+        setInfluencers(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => {
+        console.error(
+          "GET /influencers/all Error:",
+          err.response?.data || err.message
+        );
+        // jangan bikin page blank, cukup notif
+        toast.error("Gagal memuat data influencer");
+        setInfluencers([]);
+      });
   }, [form.platform_ids]);
 
   /* =========================
@@ -159,8 +200,10 @@ export default function EditContent() {
     if (!id) return;
 
     setLoading(true);
+    setPageError(""); // ✅ reset error tiap load
 
-    api.get(`/content-plans/${id}`)
+    api
+      .get(`/content-plans/${id}`)
       .then((res) => {
         const data = res.data.data ?? res.data;
         console.log("Edit Page Detail Loaded:", data);
@@ -175,12 +218,8 @@ export default function EditContent() {
           if (!adsMap[ad.platform_id]) {
             adsMap[ad.platform_id] = {
               is_ads: true,
-              start_date: ad.start_date
-                ? ad.start_date.slice(0, 10)
-                : "",
-              end_date: ad.end_date
-                ? ad.end_date.slice(0, 10)
-                : "",
+              start_date: ad.start_date ? ad.start_date.slice(0, 10) : "",
+              end_date: ad.end_date ? ad.end_date.slice(0, 10) : "",
               budget_ads: ad.budget_ads ?? "",
             };
           }
@@ -196,6 +235,9 @@ export default function EditContent() {
           contentTypeMap[cp.platform_id][cp.content_type_id] = {
             is_collaborator: !!cp.is_collaborator,
           };
+
+          if (!links[cp.platform_id]) links[cp.platform_id] = {};
+          links[cp.platform_id][cp.content_type_id] = cp.link || "";
         });
 
         setForm({
@@ -208,7 +250,7 @@ export default function EditContent() {
           ads_by_platform: adsMap,
           description: data.description ?? "",
           status_id: data.status_id ?? "",
-          content_links: {},
+          content_links: links,
         });
 
         // Auto-expand ads accordion if ads data exists
@@ -226,6 +268,21 @@ export default function EditContent() {
             }))
           );
         }
+      })
+      .catch((err) => {
+        console.error(
+          "GET /content-plans/:id Error:",
+          err.response?.data || err.message
+        );
+        const msg =
+          err.response?.data?.message ||
+          err.response?.data?.error ||
+          "Gagal memuat detail konten";
+
+        toast.error(msg);
+
+        // ✅ ini yang bikin gak blank: tetap render, tapi tampilkan card error
+        setPageError(msg);
       })
       .finally(() => setLoading(false));
   }, [id]);
@@ -249,7 +306,7 @@ export default function EditContent() {
   const totalAdsBudget = useMemo(
     () =>
       Object.values(form.ads_by_platform || {}).reduce(
-        (sum, ad) => sum + Number(ad.budget_ads || 0),
+        (sum, ad) => sum + Number(ad?.budget_ads || 0),
         0
       ),
     [form.ads_by_platform]
@@ -292,9 +349,7 @@ export default function EditContent() {
   const handleContentPick = (platformId, contentTypeId) => {
     setForm((prev) => {
       const prevPlatform = prev.selected_content_by_platform[platformId] || {};
-
       const exists = !!prevPlatform[contentTypeId];
-
       const nextPlatform = { ...prevPlatform };
 
       if (exists) {
@@ -335,14 +390,12 @@ export default function EditContent() {
         ...prev.ads_by_platform,
         [platformId]: {
           ...(prev.ads_by_platform?.[platformId] || {}),
+          // ✅ keep old behavior, tapi pastiin entry ada
           [field]: value,
         },
       },
     }));
   };
-
-  const getPlatformName = (id) =>
-    platforms.find((p) => Number(p.id) === Number(id))?.name || id;
 
   const getStatusIcon = (label) => {
     const found = STATUS_MASTER.find((s) => s.label === label);
@@ -355,33 +408,76 @@ export default function EditContent() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (form.is_ads) {
-      const adsPlatforms = Object.entries(form.ads_by_platform).filter(
-        ([pid, ad]) => ad && ad.is_ads
-      );
+    // ✅ FIX: “Kosongkan jika tidak ingin menggunakan ads di platform ini”
+    // Sebelumnya kamu kirim semua platform di ads_by_platform -> ini sering bikin backend error 500.
+    // Sekarang: hanya kirim yang “diisi” / memang punya data.
+    const activeAdsEntries = Object.entries(form.ads_by_platform || {}).filter(
+      ([, ad]) => {
+        if (!ad) return false;
+        const anyFilled =
+          String(ad.start_date || "").trim() ||
+          String(ad.end_date || "").trim() ||
+          String(ad.budget_ads ?? "").trim();
+        // data existing dari backend biasanya punya is_ads=true
+        return !!ad.is_ads || !!anyFilled;
+      }
+    );
 
-      for (const [pid, ad] of adsPlatforms) {
-        if (!ad.start_date || !ad.end_date || ad.budget_ads === "") {
-          toast.error(
-            `Platform ${platforms.find(p => p.id === Number(pid))?.name} harus mengisi semua kolom Ads`
-          );
-          return;
+    if (form.is_ads) {
+      for (const [pid, ad] of activeAdsEntries) {
+        const anyFilled =
+          String(ad.start_date || "").trim() ||
+          String(ad.end_date || "").trim() ||
+          String(ad.budget_ads ?? "").trim();
+
+        // kalau user memang mau pakai ads di platform tsb (is_ads true ATAU ada yang keisi)
+        // maka wajib lengkap semua
+        if (anyFilled || ad.is_ads) {
+          if (!ad.start_date || !ad.end_date || String(ad.budget_ads ?? "") === "") {
+            toast.error(
+              `Platform ${
+                platforms.find((p) => p.id === Number(pid))?.name
+              } harus mengisi semua kolom Ads`
+            );
+            return;
+          }
         }
       }
     }
 
-    const adsPayload = form.is_ads
-      ? Object.fromEntries(
-        Object.entries(form.ads_by_platform).map(([pid, ad]) => [
-          pid,
-          {
-            start_date: ad.start_date,
-            end_date: ad.end_date,
-            budget_ads: Number(ad.budget_ads || 0),
-          },
-        ])
-      )
-      : {};
+    // ✅ Build ads payload hanya yang aktif & lengkap
+    const adsPayload =
+      form.is_ads && activeAdsEntries.length
+        ? Object.fromEntries(
+            activeAdsEntries.map(([pid, ad]) => [
+              pid,
+              {
+                start_date: ad.start_date,
+                end_date: ad.end_date,
+                budget_ads: Number(ad.budget_ads || 0),
+              },
+            ])
+          )
+        : {};
+
+    // ✅ Link validation: tetap wajib saat Diposting
+    if (Number(form.status_id) === 4) {
+      for (const [pid, types] of Object.entries(
+        form.selected_content_by_platform || {}
+      )) {
+        for (const ctid of Object.keys(types || {})) {
+          const link = (form.content_links?.[pid]?.[ctid] ?? "").trim();
+          if (!link) {
+            const platformName =
+              platforms.find((p) => Number(p.id) === Number(pid))?.name || pid;
+            toast.error(
+              `Link wajib diisi untuk ${platformName} (content type ${ctid}) karena status Diposting`
+            );
+            return;
+          }
+        }
+      }
+    }
 
     const payload = {
       title: form.title,
@@ -391,8 +487,22 @@ export default function EditContent() {
       refund_budget: Number(form.status_id) === 5 ? refundBudget : false,
       budget_content: Number(form.budget_content),
       is_ads: form.is_ads,
-      content_types: form.selected_content_by_platform,
-      links: form.content_links,
+      content_types: Object.fromEntries(
+        Object.entries(form.selected_content_by_platform || {}).map(
+          ([pid, types]) => [
+            pid,
+            Object.fromEntries(
+              Object.entries(types || {}).map(([ctid, data]) => [
+                ctid,
+                {
+                  ...data,
+                  link: (form.content_links?.[pid]?.[ctid] ?? "").trim() || null,
+                },
+              ])
+            ),
+          ]
+        )
+      ),
       influencer_ids: useInfluencer
         ? influencerRows.map((r) => r.influencer_id).filter(Boolean)
         : [],
@@ -401,12 +511,20 @@ export default function EditContent() {
 
     try {
       setLoading(true);
+      console.log("PAYLOAD PUT:", payload);
       await api.put(`/content-plans/${id}`, payload);
       toast.success("Perubahan berhasil disimpan");
       navigate(`/konten/${id}`);
     } catch (err) {
       console.error("PUT Error:", err.response?.data || err.message);
-      const errorMsg = err.response?.data?.error || err.response?.data?.message || "Gagal menyimpan perubahan";
+      console.error("PUT Error full:", {
+        status: err.response?.status,
+        data: err.response?.data,
+      });
+      const errorMsg =
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        "Gagal menyimpan perubahan";
       toast.error(errorMsg);
     } finally {
       setLoading(false);
@@ -421,8 +539,44 @@ export default function EditContent() {
   const baseSelect =
     "w-full appearance-none border rounded-lg px-6 py-3 pr-12 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none";
 
-  // Get current status label
-  const currentStatusLabel = statusOptions.find(s => s.id === Number(form.status_id))?.label || "";
+  const currentStatusLabel =
+    statusOptions.find((s) => s.id === Number(form.status_id))?.label || "";
+
+  // ✅ kalau error load detail, tetap render card error (biar gak blank)
+  if (pageError) {
+    return (
+      <div className="p-8 max-w-4xl mx-auto">
+        <div className="bg-white border border-rose-200 rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <Icon icon="mdi:alert-circle-outline" width={22} className="text-rose-600" />
+            <h3 className="text-xl font-extrabold text-slate-900">
+              Gagal memuat halaman edit
+            </h3>
+          </div>
+          <div className="text-sm text-slate-600 mb-6">
+            {pageError}
+          </div>
+
+          <div className="flex gap-3 justify-end">
+            <button
+              type="button"
+              onClick={() => navigate(`/konten/${id}`)}
+              className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 transition"
+            >
+              Kembali
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(0)}
+              className="px-5 py-2 rounded-lg bg-blue-900 text-white hover:bg-blue-800 transition"
+            >
+              Coba lagi
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 max-w-8xl mx-auto">
@@ -430,7 +584,6 @@ export default function EditContent() {
         Edit Perencanaan Konten
       </h2>
 
-      {/* ✅ LAYOUT 2 CARD (LIKE CREATE.JSX) */}
       <form onSubmit={handleSubmit} noValidate>
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-stretch">
           {/* ================= LEFT CARD: INFORMASI ================= */}
@@ -445,7 +598,6 @@ export default function EditContent() {
 
             <div className="space-y-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* 1) JUDUL */}
                 <Field label={<span className="text-lg font-bold">Judul Konten</span>} required>
                   <input
                     className={baseInput}
@@ -456,7 +608,6 @@ export default function EditContent() {
                   />
                 </Field>
 
-                {/* 2) TANGGAL */}
                 <Field label={<span className="text-lg font-bold">Tanggal Konten</span>} required>
                   <input
                     type="date"
@@ -468,7 +619,6 @@ export default function EditContent() {
                 </Field>
               </div>
 
-              {/* 3) BUDGET KONTEN */}
               <Field label="Budget Konten" required>
                 <input
                   type="text"
@@ -479,17 +629,13 @@ export default function EditContent() {
                   onChange={(e) => {
                     setForm((prev) => ({
                       ...prev,
-                      budget_content: parseRupiahInput(
-                        e.target.value,
-                        prev.budget_content
-                      ),
+                      budget_content: parseRupiahInput(e.target.value, prev.budget_content),
                     }));
                   }}
                   placeholder="Masukkan budget konten"
                 />
               </Field>
 
-              {/* DESKRIPSI (opsional) */}
               <Field label="Deskripsi">
                 <textarea
                   name="description"
@@ -501,7 +647,6 @@ export default function EditContent() {
                 />
               </Field>
 
-              {/* 4) PLATFORM (DROPDOWN CHECKBOX) */}
               <Field label={<span className="text-lg font-bold">Platform / Sosial media</span>} required>
                 <div className="relative" ref={dropdownRef}>
                   <button
@@ -512,9 +657,9 @@ export default function EditContent() {
                     <span className={form.platform_ids.length ? "text-slate-800" : "text-slate-400"}>
                       {form.platform_ids.length
                         ? platforms
-                          .filter((p) => form.platform_ids.includes(p.id))
-                          .map((p) => p.name)
-                          .join(", ")
+                            .filter((p) => form.platform_ids.includes(p.id))
+                            .map((p) => p.name)
+                            .join(", ")
                         : "Pilih Platform"}
                     </span>
                     <Icon
@@ -582,7 +727,6 @@ export default function EditContent() {
                           </button>
                         </div>
 
-                        {/* Scrollable influencer list - max 2 visible, scroll for more */}
                         <div className="max-h-[380px] overflow-y-auto space-y-4 pr-1">
                           {influencerRows.map((row, idx) => {
                             const selectedInf = availableInfluencers.find(
@@ -614,7 +758,9 @@ export default function EditContent() {
                                         onChange={(e) =>
                                           setInfluencerInRow(row.rowId, Number(e.target.value))
                                         }
-                                        className={`${baseSelect} ${optionsForThisRow.length ? "" : disabledSelect}`}
+                                        className={`${baseSelect} ${
+                                          optionsForThisRow.length ? "" : disabledSelect
+                                        }`}
                                         disabled={optionsForThisRow.length === 0}
                                       >
                                         <option value="" disabled>
@@ -666,36 +812,36 @@ export default function EditContent() {
 
                                         {(selectedInf.email ||
                                           (selectedInf.contacts && selectedInf.contacts.length > 0)) && (
-                                            <div className="mt-4 border-t pt-4">
-                                              <div className="text-sm font-bold text-slate-700 mb-2">
-                                                CP (Kontak Person)
-                                              </div>
-                                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                {selectedInf.email && (
-                                                  <div className="border rounded-lg px-4 py-3">
-                                                    <div className="text-xs font-semibold text-slate-500">
-                                                      Email
-                                                    </div>
-                                                    <div className="text-sm text-slate-800">
-                                                      {selectedInf.email}
-                                                    </div>
-                                                  </div>
-                                                )}
-
-                                                {selectedInf.contacts?.map((c, i) => (
-                                                  <div
-                                                    key={`${selectedInf.id}_cp_${i}`}
-                                                    className="border rounded-lg px-4 py-3"
-                                                  >
-                                                    <div className="text-xs font-semibold text-slate-500">
-                                                      No. Telepon
-                                                    </div>
-                                                    <div className="text-sm text-slate-800">{c}</div>
-                                                  </div>
-                                                ))}
-                                              </div>
+                                          <div className="mt-4 border-t pt-4">
+                                            <div className="text-sm font-bold text-slate-700 mb-2">
+                                              CP (Kontak Person)
                                             </div>
-                                          )}
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                              {selectedInf.email && (
+                                                <div className="border rounded-lg px-4 py-3">
+                                                  <div className="text-xs font-semibold text-slate-500">
+                                                    Email
+                                                  </div>
+                                                  <div className="text-sm text-slate-800">
+                                                    {selectedInf.email}
+                                                  </div>
+                                                </div>
+                                              )}
+
+                                              {selectedInf.contacts?.map((c, i) => (
+                                                <div
+                                                  key={`${selectedInf.id}_cp_${i}`}
+                                                  className="border rounded-lg px-4 py-3"
+                                                >
+                                                  <div className="text-xs font-semibold text-slate-500">
+                                                    No. Telepon
+                                                  </div>
+                                                  <div className="text-sm text-slate-800">{c}</div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
                                       </div>
                                     )}
                                   </div>
@@ -732,14 +878,16 @@ export default function EditContent() {
             </p>
 
             <div className="space-y-10">
-              {/* STATUS FIELD WITH COLORFUL BADGE */}
               <Field label={<span className="text-lg font-bold">Status</span>} required>
                 <div className="space-y-3">
-                  {/* Current Status Badge */}
                   {currentStatusLabel && (
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-slate-500">Status saat ini:</span>
-                      <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold ${statusStyle[currentStatusLabel] || "bg-slate-100 text-slate-600"}`}>
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold ${
+                          statusStyle[currentStatusLabel] || "bg-slate-100 text-slate-600"
+                        }`}
+                      >
                         <Icon icon={getStatusIcon(currentStatusLabel)} width={16} />
                         {currentStatusLabel}
                       </span>
@@ -802,10 +950,10 @@ export default function EditContent() {
                       const pickedNames =
                         pickedObj && Object.keys(pickedObj).length > 0
                           ? Object.keys(pickedObj)
-                            .map((id) =>
-                              types.find((t) => Number(t.id) === Number(id))?.name
-                            )
-                            .filter(Boolean)
+                              .map((id) =>
+                                types.find((t) => Number(t.id) === Number(id))?.name
+                              )
+                              .filter(Boolean)
                           : [];
 
                       const isOpen = !!openContentAccordion?.[pid];
@@ -818,23 +966,18 @@ export default function EditContent() {
                           <button
                             type="button"
                             onClick={() => {
-                              // Exclusive accordion - only one open at a time
                               const isCurrentlyOpen = openContentAccordion?.[pid] ?? false;
                               setOpenContentAccordion(isCurrentlyOpen ? {} : { [pid]: true });
                             }}
                             className="w-full flex items-start justify-between gap-4 px-4 py-4"
                           >
                             <div className="min-w-0 flex items-center gap-1.5">
-                              {pIcon && <Icon icon={pIcon.icon} width={20} className="shrink-0" />}
-                              <div className="font-bold text-slate-800">
-                                {platform?.name}
-                              </div>
+                              {pIcon && (
+                                <Icon icon={pIcon.icon} width={20} className="shrink-0" />
+                              )}
+                              <div className="font-bold text-slate-800">{platform?.name}</div>
                               <span className="text-xs text-slate-500 ml-2">
-                                {pickedNames.length ? (
-                                  <>({pickedNames.join(", ")})</>
-                                ) : (
-                                  "(Belum dipilih)"
-                                )}
+                                {pickedNames.length ? <>({pickedNames.join(", ")})</> : "(Belum dipilih)"}
                               </span>
                             </div>
 
@@ -860,9 +1003,10 @@ export default function EditContent() {
                                     <div
                                       key={`${pid}_${t.id}`}
                                       className={`flex-1 min-w-[180px] min-h-[120px] border rounded-lg p-4 space-y-3
-                                        ${selected
-                                          ? "border-blue-600 bg-blue-50"
-                                          : "border-slate-200"
+                                        ${
+                                          selected
+                                            ? "border-blue-600 bg-blue-50"
+                                            : "border-slate-200"
                                         }
                                       `}
                                     >
@@ -874,7 +1018,9 @@ export default function EditContent() {
                                           onChange={() => handleContentPick(pid, t.id)}
                                           className="scale-125"
                                         />
-                                        {pIcon && <Icon icon={pIcon.icon} width={18} className="shrink-0" />}
+                                        {pIcon && (
+                                          <Icon icon={pIcon.icon} width={18} className="shrink-0" />
+                                        )}
                                         <span className="font-medium">{t.name}</span>
                                       </label>
 
@@ -923,28 +1069,32 @@ export default function EditContent() {
                                 })}
                               </div>
 
-                              {/* Link input for posted status */}
-                              {Number(form.status_id) === 4 &&
-                                Object.entries(form.selected_content_by_platform?.[pid] || {}).map(
-                                  ([contentTypeId]) => {
-                                    const contentType = types.find(
-                                      (t) => String(t.id) === String(contentTypeId)
-                                    );
+                              {/* ✅ LINK INPUT: sekarang selalu bisa diisi (tidak hanya saat Diposting) */}
+                              {/* Tapi tetap WAJIB hanya ketika status Diposting (validasi di handleSubmit). */}
+                              {Object.entries(form.selected_content_by_platform?.[pid] || {}).map(
+                                ([contentTypeId]) => {
+                                  const contentType = types.find(
+                                    (t) => String(t.id) === String(contentTypeId)
+                                  );
 
-                                    return (
-                                      <input
-                                        key={contentTypeId}
-                                        type="url"
-                                        placeholder={`Link ${platform?.name} - ${contentType?.name}`}
-                                        value={form.content_links?.[pid]?.[contentTypeId] || ""}
-                                        onChange={(e) =>
-                                          handleLinkChange(pid, contentTypeId, e.target.value)
-                                        }
-                                        className={`${baseInput} mt-3`}
-                                      />
-                                    );
-                                  }
-                                )}
+                                  const isRequired = Number(form.status_id) === 4;
+
+                                  return (
+                                    <input
+                                      key={contentTypeId}
+                                      type="url"
+                                      placeholder={`Link ${platform?.name} - ${contentType?.name}${
+                                        isRequired ? " (wajib)" : " (opsional)"
+                                      }`}
+                                      value={form.content_links?.[pid]?.[contentTypeId] || ""}
+                                      onChange={(e) =>
+                                        handleLinkChange(pid, contentTypeId, e.target.value)
+                                      }
+                                      className={`${baseInput} mt-3`}
+                                    />
+                                  );
+                                }
+                              )}
 
                               {types.length === 0 && (
                                 <div className="mt-3 text-sm text-slate-500">
@@ -992,7 +1142,6 @@ export default function EditContent() {
                       <button
                         type="button"
                         onClick={() => {
-                          // Exclusive accordion - only one open at a time
                           const isCurrentlyOpen = !!openAdsAccordion[pid];
                           setOpenAdsAccordion(isCurrentlyOpen ? {} : { [pid]: true });
                         }}
@@ -1040,13 +1189,20 @@ export default function EditContent() {
 
                             <Field label="Budget Ads">
                               <input
-                                type="number"
+                                type="text"
+                                inputMode="numeric"
                                 className={baseInput}
+                                value={formatRupiahInput(form.ads_by_platform?.[pid]?.budget_ads || "")}
+                                onChange={(e) => {
+                                  const prevVal =
+                                    form.ads_by_platform?.[pid]?.budget_ads || "";
+                                  handleAdsChange(
+                                    pid,
+                                    "budget_ads",
+                                    parseRupiahInput(e.target.value, prevVal)
+                                  );
+                                }}
                                 placeholder="Masukkan budget ads"
-                                value={ads.budget_ads || ""}
-                                onChange={(e) =>
-                                  handleAdsChange(pid, "budget_ads", e.target.value)
-                                }
                               />
                             </Field>
                           </div>
@@ -1064,7 +1220,8 @@ export default function EditContent() {
               <div className="border rounded-xl p-4 bg-slate-50">
                 <div className="text-sm text-slate-500 mb-1">Total Budget</div>
                 <div className="text-xl font-bold text-slate-800">
-                  Rp {(Number(form.budget_content || 0) + totalAdsBudget).toLocaleString("id-ID")}
+                  Rp{" "}
+                  {(Number(form.budget_content || 0) + totalAdsBudget).toLocaleString("id-ID")}
                 </div>
               </div>
 
@@ -1088,58 +1245,56 @@ export default function EditContent() {
               </div>
             </div>
           </div>
-        </div >
-      </form >
+        </div>
+      </form>
 
       {/* REFUND MODAL */}
-      {
-        showRefundModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
-              <h3 className="text-xl font-bold text-blue-900 mb-2">
-                Refund Budget?
-              </h3>
+      {showRefundModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <h3 className="text-xl font-bold text-blue-900 mb-2">Refund Budget?</h3>
 
-              <p className="text-slate-600 mb-6">
-                Apakah Anda ingin melakukan refund budget untuk konten ini?
-              </p>
+            <p className="text-slate-600 mb-6">
+              Apakah Anda ingin melakukan refund budget untuk konten ini?
+            </p>
 
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setRefundBudget(false);
-                    setForm((p) => ({
-                      ...p,
-                      status_id: pendingStatus,
-                    }));
-                    setShowRefundModal(false);
-                    setPendingStatus(null);
-                  }}
-                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 transition"
-                >
-                  Tidak
-                </button>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setRefundBudget(false);
+                  setForm((p) => ({
+                    ...p,
+                    status_id: pendingStatus,
+                  }));
+                  setShowRefundModal(false);
+                  setPendingStatus(null);
+                }}
+                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 transition"
+              >
+                Tidak
+              </button>
 
-                <button
-                  onClick={() => {
-                    setRefundBudget(true);
-                    setForm((p) => ({
-                      ...p,
-                      status_id: pendingStatus,
-                    }));
-                    setShowRefundModal(false);
-                    setPendingStatus(null);
-                  }}
-                  className="px-5 py-2 rounded-lg bg-blue-900 text-white hover:bg-blue-800 transition"
-                >
-                  Ya, Refund
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setRefundBudget(true);
+                  setForm((p) => ({
+                    ...p,
+                    status_id: pendingStatus,
+                  }));
+                  setShowRefundModal(false);
+                  setPendingStatus(null);
+                }}
+                className="px-5 py-2 rounded-lg bg-blue-900 text-white hover:bg-blue-800 transition"
+              >
+                Ya, Refund
+              </button>
             </div>
           </div>
-        )
-      }
-    </div >
+        </div>
+      )}
+    </div>
   );
 }
 

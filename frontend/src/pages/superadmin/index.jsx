@@ -4,7 +4,6 @@ import Select from "react-select";
 import toast from "react-hot-toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../../lib/axios";
-import Navbar from "../../components/Navbar";
 
 /* =====================
   NORMALIZER
@@ -71,6 +70,17 @@ const PARTY_LOGO_BY_CODE = {
   100017: "ppp",
 };
 
+const INDEPENDEN_OPTION = { value: 100000, label: "Independen" };
+
+function isIndependen(opt) {
+  if (!opt) return false;
+  return (
+    Number(opt.value) === INDEPENDEN_OPTION.value ||
+    String(opt.label || "").toLowerCase() === "independen"
+  );
+}
+
+
 /* =====================
   PAGE
 ===================== */
@@ -122,12 +132,29 @@ export default function SuperadminDashboard() {
   });
 
   const partiesOptions = useMemo(() => {
-    const list = partiesQuery.data || [];
-    return list.map((p) => ({
+  const list = partiesQuery.data || [];
+
+  // buang independen dari API biar ga double
+  const opts = list
+    .filter((p) => Number(p.party_code) !== INDEPENDEN_OPTION.value)
+    .map((p) => ({
       value: p.party_code,
       label: p.party,
     }));
+
+  return [INDEPENDEN_OPTION, ...opts];
   }, [partiesQuery.data]);
+
+
+  const hasIndependenSelected = useMemo(
+    () => (newPaslon.parties || []).some(isIndependen),
+    [newPaslon.parties]
+  );
+
+  const hasNonIndependenSelected = useMemo(
+    () => (newPaslon.parties || []).some((x) => !isIndependen(x)),
+    [newPaslon.parties]
+  );
 
   const paslonCards = useMemo(() => {
     const list = paslonsQuery.data || [];
@@ -182,9 +209,18 @@ export default function SuperadminDashboard() {
       fd.append("cawagub", newPaslon.cawagub);
       fd.append("nomor_urut", String(newPaslon.nomor_urut));
 
-      (newPaslon.parties || []).forEach((opt) => {
-        fd.append("party_codes[]", String(opt.value));
-      });
+      const selected = newPaslon.parties || [];
+      const indep = selected.find(isIndependen);
+
+      if (indep) {
+        // independen: cuma kirim kode independen
+        fd.append("party_codes[]", String(indep.value)); // 100000
+      } else {
+        // non-independen: kirim semua partai yang dipilih
+        selected.forEach((opt) => {
+          fd.append("party_codes[]", String(opt.value));
+        });
+      }
 
       if (newPaslon.imageFile) fd.append("image", newPaslon.imageFile);
 
@@ -358,11 +394,44 @@ export default function SuperadminDashboard() {
     }
   };
 
+  async function copyText(text, label = "Teks") {
+  try {
+    if (!text) throw new Error("Kosong");
+
+    // ✅ modern clipboard (butuh secure context)
+    if (navigator?.clipboard?.writeText && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} disalin!`);
+      return true;
+    }
+
+    // ✅ fallback (buat http / IP)
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "-9999px";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+
+    if (!ok) throw new Error("Copy gagal");
+    toast.success(`${label} disalin!`);
+    return true;
+  } catch (e) {
+    toast.error(`Gagal copy ${label}`);
+    return false;
+  }
+}
+
   return (
     <div className="min-h-screen bg-slate-100">
-      <Navbar />
       
-      <div className="px-8 py-8 space-y-8">
+      <div className="px-7 py-6 space-y-6">
         <HeaderBanner
           title={`Selamat Datang, ${role}`}
           subtitle="Sistem Manajemen SuperWeb"
@@ -439,7 +508,7 @@ export default function SuperadminDashboard() {
                       )}
                     </div>
 
-                    <div className="absolute top-3 left-3">
+                    <div className="absolute top-3 left-3 z-30">
                       <span className="inline-flex items-center gap-1 text-[13px] text-slate-700 bg-white/80 border border-slate-200 px-2.5 py-1 rounded-full font-semibold backdrop-blur">
                         Nomor Urut {p.nomor_urut}
                       </span>
@@ -583,6 +652,18 @@ export default function SuperadminDashboard() {
                   placeholder="Pilih partai (bisa lebih dari satu)"
                   className="text-sm"
                   classNamePrefix="react-select"
+                  components={{
+                    IndicatorSeparator: () => null,
+                  }}
+                  isOptionDisabled={(option) => {
+                    // kalau Independen sudah kepilih -> selain Independen jadi non-klik
+                    if (hasIndependenSelected) return !isIndependen(option);
+
+                    // kalau udah pilih partai lain -> Independen non-klik
+                    if (hasNonIndependenSelected && isIndependen(option)) return true;
+
+                    return false;
+                  }}
                   styles={{
                     control: (base) => ({
                       ...base,
@@ -593,6 +674,22 @@ export default function SuperadminDashboard() {
                     }),
                   }}
                 />
+                {hasIndependenSelected && (
+                <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                  <div className="flex items-start gap-2">
+                    <Icon
+                      icon="mdi:alert-circle-outline"
+                      className="w-5 h-5 text-amber-700 mt-0.5"
+                    />
+                    <p className="text-sm text-amber-800">
+                      <span className="font-semibold">Catatan:</span> Kamu memilih{" "}
+                      <span className="font-semibold">Independen</span>, jadi tidak bisa memilih
+                      partai pengusung. Untuk memilih partai, hapus{" "}
+                      <span className="font-semibold">Independen</span> dulu.
+                    </p>
+                  </div>
+                </div>
+              )}
               </div>
 
               <div className="space-y-2">
@@ -848,10 +945,8 @@ export default function SuperadminDashboard() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-slate-900">{selectedAdmin.email}</span>
                     <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(selectedAdmin.email);
-                        toast.success("Email disalin!");
-                      }}
+                      type="button"
+                      onClick={() => copyText(selectedAdmin.email, "Email")}
                       className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                     >
                       <Icon icon="mdi:content-copy" className="w-4 h-4" />
@@ -869,11 +964,9 @@ export default function SuperadminDashboard() {
                         <span className="text-sm text-slate-800">
                           {selectedAdmin.password}
                         </span>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(selectedAdmin.password);
-                            toast.success("Password disalin!");
-                          }}
+                       <button
+                          type="button"
+                          onClick={() => copyText(selectedAdmin.password, "Password")}
                           className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                         >
                           <Icon icon="mdi:content-copy" className="w-4 h-4" />
@@ -944,13 +1037,26 @@ function Modal({ children, onClose, title }) {
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" role="dialog" aria-modal="true">
-      <div onClick={onClose} className="absolute inset-0 bg-black/40" />
-      <div className="relative w-full max-w-xl rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden animate-[modalIn_.18s_ease-out]">
+    <div
+      className="fixed inset-0 z-[9000] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+    >
+      {/* OVERLAY: harus fixed + backdrop-blur */}
+      <div
+        onClick={onClose}
+        className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+      />
+
+      {/* MODAL CARD di atas overlay */}
+      <div className="relative z-10 w-full max-w-xl rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden animate-[modalIn_.18s_ease-out]">
         <div className="px-6 py-5 flex items-start justify-between">
           <div className="pr-10">
-            <h2 className="mt-2 text-2xl font-bold text-blue-800 leading-snug">{title}</h2>
+            <h2 className="mt-2 text-2xl font-bold text-blue-800 leading-snug">
+              {title}
+            </h2>
           </div>
+
           <button
             onClick={onClose}
             className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white border border-slate-200 hover:bg-slate-50 shadow-sm hover:shadow transition-all flex items-center justify-center"
@@ -960,7 +1066,9 @@ function Modal({ children, onClose, title }) {
           </button>
         </div>
 
-        <div className="px-6 pb-6 max-h-[70vh] overflow-y-auto">{children}</div>
+        <div className="px-6 pb-6 max-h-[70vh] overflow-y-auto">
+          {children}
+        </div>
       </div>
 
       <style>{`

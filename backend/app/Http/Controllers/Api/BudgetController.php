@@ -41,8 +41,9 @@ class BudgetController extends Controller
 
         $used = ContentPlan::query()
             ->where('paslon_id', $paslonId)
+            ->with(['budget']) // biar gak N+1
             ->get()
-            ->sum(fn ($cp) => (float) $cp->total_budget);
+            ->sum(fn($cp) => (float) $cp->total_budget_active);
 
         $total = (float) ($budgetRow->amount ?? 0);
         $remaining = $total - $used;
@@ -57,28 +58,4 @@ class BudgetController extends Controller
             ]
         ]);
     }
-
-    // /**
-    //  * PUT /budget
-    //  * Set total budget paslon ini
-    //  */
-    // public function update(Request $request)
-    // {
-    //     $paslonId = $this->currentPaslonId();
-
-    //     $validated = $request->validate([
-    //         'amount' => 'required|numeric|min:0'
-    //     ]);
-
-    //     $row = TotalBudget::updateOrCreate(
-    //         ['paslon_id' => $paslonId],
-    //         ['amount' => $validated['amount']]
-    //     );
-
-    //     return response()->json([
-    //         'status' => true,
-    //         'message' => 'Total budget berhasil diperbarui',
-    //         'data' => $row
-    //     ]);
-    // }
 }

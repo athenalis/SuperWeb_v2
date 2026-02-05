@@ -37,15 +37,40 @@ export default function Login() {
       localStorage.setItem("role_id", data.user.role_id);
       localStorage.setItem("password", password);
 
+      // Simpan flag is_apk dan is_kunjungan untuk relawan (sebagai "1" atau "0" untuk konsistensi)
+      if (data.user.is_apk !== undefined) {
+        const isApkValue = data.user.is_apk === 1 || data.user.is_apk === true || data.user.is_apk === "1" ? "1" : "0";
+        localStorage.setItem("is_apk", isApkValue);
+        console.log("[Login] is_apk from backend:", data.user.is_apk, "-> saved as:", isApkValue);
+      }
+      if (data.user.is_kunjungan !== undefined) {
+        const isKunjunganValue = data.user.is_kunjungan === 1 || data.user.is_kunjungan === true || data.user.is_kunjungan === "1" ? "1" : "0";
+        localStorage.setItem("is_kunjungan", isKunjunganValue);
+        console.log("[Login] is_kunjungan from backend:", data.user.is_kunjungan, "-> saved as:", isKunjunganValue);
+      }
+
       const name = getNameFromEmail(data.user.email);
       toast.success(`Login berhasil sebagai ${name}`);
 
       const role = data.user.role;
       if (role === "admin_paslon") navigate("/dashboard");
       else if (role === "kunjungan_koordinator") navigate("/relawan/kunjungan");
-      else if (role === "apk_koordinator") navigate("/relawan/apk");
-      else if (role === "relawan") navigate("/kunjungan");
       else if (role === "superadmin") navigate("/superadmin");
+      else if (role === "apk_koordinator") navigate("/relawan/apk");
+      else if (role === "admin_apk") navigate("/koordinator/apk");
+      else if (role === "apk_kurir" || role === "kurir_apk") navigate("/Dashboardkurir-apk");
+      else if (role === "relawan") {
+        // Relawan dengan is_apk -> pasangapk (prioritas)
+        // Relawan dengan is_kunjungan saja -> kunjungan
+        // Double job (is_apk=1 & is_kunjungan=1) -> prioritas pasangapk
+        // Handle berbagai tipe data: boolean true, number 1, string "1"
+        const isApk = data.user.is_apk === 1 || data.user.is_apk === true || data.user.is_apk === "1";
+        if (isApk) {
+          navigate("/relawan/apk/pasangapk");
+        } else {
+          navigate("/kunjungan");
+        }
+      }
       else navigate("/dashboard"); // default
     },
   });

@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Icon } from "@iconify/react";
 import toast from "react-hot-toast";
 import Navbar from "../../../components/Navbar"; // <- sesuaikan path
+import api from "../../../lib/axios";
+import { useMutation } from "@tanstack/react-query";
 
 export default function PasangApk() {
   const videoRef = useRef(null);
@@ -16,6 +18,8 @@ export default function PasangApk() {
 
   const [gettingLocation, setGettingLocation] = useState(false);
   const [coords, setCoords] = useState({ lat: null, lng: null, accuracy: null });
+  const [address, setAddress] = useState(""); // state untuk alamat
+  const [gettingAddress, setGettingAddress] = useState(false);
 
   const [now, setNow] = useState(new Date());
 
@@ -29,6 +33,38 @@ export default function PasangApk() {
 
   const formatTanggal = (d) =>
     d.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+
+  // --- REVERSE GEOCODING ---
+  const getAddressFromCoords = useCallback(async (lat, lng) => {
+    if (!lat || !lng) return;
+
+    setGettingAddress(true);
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+        {
+          headers: {
+            'Accept-Language': 'id',
+          }
+        }
+      );
+
+      if (!response.ok) throw new Error("Gagal mengambil alamat");
+
+      const data = await response.json();
+
+      if (data && data.display_name) {
+        setAddress(data.display_name);
+      } else {
+        setAddress("Alamat tidak ditemukan");
+      }
+    } catch (error) {
+      console.error("Error getting address:", error);
+      setAddress("Gagal mengambil alamat");
+    } finally {
+      setGettingAddress(false);
+    }
+  }, []);
 
   // --- CAMERA ---
   const stopCamera = () => {
@@ -97,6 +133,7 @@ export default function PasangApk() {
     }
 
     setGettingLocation(true);
+    setAddress(""); // reset alamat
     toast.loading("Mengambil lokasi...", { id: "gps" });
 
     navigator.geolocation.getCurrentPosition(
@@ -105,6 +142,9 @@ export default function PasangApk() {
         setCoords({ lat: latitude, lng: longitude, accuracy });
         toast.success("Lokasi berhasil diambil", { id: "gps" });
         setGettingLocation(false);
+
+        // Ambil alamat dari koordinat
+        getAddressFromCoords(latitude, longitude);
       },
       (err) => {
         console.error(err);
@@ -160,88 +200,134 @@ export default function PasangApk() {
   const retake = () => {
     setPhotoDataUrl("");
     setMode("live");
+    // Restart kamera setelah kembali ke mode live
+    startCamera();
   };
+
+  // --- MUTATION ---
+  // --- MUTATION ---
+
+  // const [note, setNote] = useState(""); // Note removed as per request
+
+  const { isPending: isSubmitting, mutate: submitReport } = useMutation({
+    mutationFn: async (formData) => {
+      // Backend expects: photo, latitude, longitude, taken_at (and headers)
+      return await api.post("/apk/installations", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+    },
+    onSuccess: () => {
+      toast.dismiss("submitting");
+      toast.success("Laporan berhasil disimpan!");
+      // Reset state
+      setPhotoDataUrl("");
+      setMode("live");
+      setAddress("");
+      // setNote(""); 
+      startCamera();
+      getLocation();
+    },
+    onError: (err) => {
+      console.error(err);
+      toast.dismiss("submitting");
+      toast.error(err.response?.data?.message || "Gagal menyimpan laporan");
+    }
+  });
+
+  // Convert DataURL to File
+  const dataURLtoFile = (dataurl, filename) => {
+    let arr = dataurl.split(','),
+      mime = arr[0].match(/:(.*?);/)[1],
+      bstr = atob(arr[1]),
+      n = bstr.length,
+      u8arr = new Uint8Array(n);
+
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, { type: mime });
+  }
 
   const confirm = () => {
     if (!photoDataUrl) return toast.error("Belum ada foto");
     if (coords.lat == null || coords.lng == null) return toast.error("Lokasi belum ada. Ambil GPS dulu.");
 
-    toast.success("Tersimpan (dummy). Foto lagi ya.");
-    console.log("[DUMMY SAVE]", {
-      lat: coords.lat,
-      lng: coords.lng,
-      accuracy: coords.accuracy,
-      device_time: new Date().toISOString(),
-      photo_preview: photoDataUrl.slice(0, 40) + "...",
-    });
+    toast.loading("Mengirim laporan...", { id: "submitting" });
 
-    // balik lagi seperti refresh
-    setPhotoDataUrl("");
-    setMode("live");
-    getLocation();
+    const file = dataURLtoFile(photoDataUrl, "apk_proof.jpg");
+
+    const formData = new FormData();
+    formData.append("photo", file);
+    formData.append("latitude", coords.lat);
+    formData.append("longitude", coords.lng);
+
+    // Add taken_at (required by backend now)
+    // Use ISO string or format 'YYYY-MM-DD HH:mm:ss' 
+    // Laravel default date validation accepts Y-m-d H:i:s usually.
+    // Let's formatting it to be safe or just send ISO. 
+    // User backend: 'taken_at' => 'required|date'
+    formData.append("taken_at", new Date().toISOString());
+
+    // REMOVED: note, accuracy, address (Backend doesn't use them in create payload)
+    // if (coords.accuracy) formData.append("accuracy", coords.accuracy);
+    // if (address) formData.append("address", address);
+    // formData.append("note", note || "Laporan Pemasangan APK");
+
+    submitReport(formData);
   };
 
   const locationText =
-    coords.lat == null || coords.lng == null ? "Lokasi belum diambil" : `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`;
+    coords.lat == null || coords.lng == null ? "Belum diambil" : `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`;
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="h-screen flex flex-col bg-slate-50 overflow-hidden">
       <Navbar />
 
-      <div className="max-w-3xl mx-auto px-4 md:px-6 py-4">
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-          {/* header */}
-          <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+      <div className="flex-1 flex flex-col max-w-3xl mx-auto w-full px-2 md:px-6 py-2 overflow-hidden">
+        <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+          {/* header - compact */}
+          <div className="px-4 py-2 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-2">
-              <Icon icon="mdi:camera-marker" width={22} className="text-blue-700" />
+              <Icon icon="mdi:camera-marker" width={20} className="text-blue-700" />
               <div>
-                <p className="font-bold text-slate-800">Foto Pemasangan APK</p>
-                <p className="text-xs text-slate-500">Mode: {mode === "live" ? "Kamera" : "Review"}</p>
+                <p className="font-bold text-slate-800 text-sm">Foto Pemasangan APK</p>
+                <p className="text-xs text-slate-500">{formatJam(now)} • {formatTanggal(now)}</p>
               </div>
-            </div>
-
-            <div className="text-right">
-              <p className="text-sm font-bold text-slate-800 flex items-center gap-2 justify-end">
-                <Icon icon="mdi:clock-outline" width={18} className="text-blue-700" />
-                {formatJam(now)}
-              </p>
-              <p className="text-xs text-slate-500">{formatTanggal(now)}</p>
             </div>
           </div>
 
-          {/* camera area */}
-          <div className="relative bg-black">
+          {/* camera area - flex grow to fill available space */}
+          <div className="relative bg-black flex-1 min-h-0">
             {mode === "live" && (
               <>
-                <video ref={videoRef} playsInline muted className="w-full h-[68vh] object-cover" />
+                <video ref={videoRef} playsInline muted className="w-full h-full object-cover" />
 
                 {/* overlay */}
                 <div className="absolute inset-0 pointer-events-none">
-                  <div className="absolute top-4 left-0 right-0 text-center text-white drop-shadow">
+                  <div className="absolute top-3 left-0 right-0 text-center text-white drop-shadow">
                     <p className="text-sm font-semibold opacity-95">Foto APK yang sudah terpasang</p>
-                    <p className="text-xs opacity-80">Pastikan APK terlihat jelas</p>
                   </div>
 
-                  <div className="absolute left-6 right-6 top-20 bottom-28 border-2 border-blue-400/80 rounded-xl">
-                    <span className="absolute -top-1 -left-1 w-10 h-10 border-l-4 border-t-4 border-blue-400 rounded-tl-xl" />
-                    <span className="absolute -top-1 -right-1 w-10 h-10 border-r-4 border-t-4 border-blue-400 rounded-tr-xl" />
-                    <span className="absolute -bottom-1 -left-1 w-10 h-10 border-l-4 border-b-4 border-blue-400 rounded-bl-xl" />
-                    <span className="absolute -bottom-1 -right-1 w-10 h-10 border-r-4 border-b-4 border-blue-400 rounded-br-xl" />
+                  <div className="absolute left-4 right-4 top-12 bottom-20 border-2 border-blue-400/80 rounded-xl">
+                    <span className="absolute -top-1 -left-1 w-8 h-8 border-l-4 border-t-4 border-blue-400 rounded-tl-xl" />
+                    <span className="absolute -top-1 -right-1 w-8 h-8 border-r-4 border-t-4 border-blue-400 rounded-tr-xl" />
+                    <span className="absolute -bottom-1 -left-1 w-8 h-8 border-l-4 border-b-4 border-blue-400 rounded-bl-xl" />
+                    <span className="absolute -bottom-1 -right-1 w-8 h-8 border-r-4 border-b-4 border-blue-400 rounded-br-xl" />
                   </div>
                 </div>
 
                 {/* if camera not ready */}
                 {!cameraReady && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/60">
-                    <div className="bg-white rounded-xl p-5 w-[92%] max-w-sm text-center">
+                    <div className="bg-white rounded-xl p-4 w-[90%] max-w-sm text-center">
                       <p className="font-bold text-slate-800">Kamera belum aktif</p>
                       <p className="text-sm text-slate-500 mt-1">
-                        Klik tombol di bawah untuk mengaktifkan kamera (permission).
+                        Klik tombol di bawah untuk mengaktifkan kamera.
                       </p>
                       <button
                         onClick={startCamera}
                         disabled={startingCamera}
-                        className={`mt-4 w-full px-4 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2
+                        className={`mt-3 w-full px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2
                           ${startingCamera ? "bg-slate-200 text-slate-500" : "bg-blue-700 text-white hover:bg-blue-800"}`}
                       >
                         <Icon icon="mdi:camera" width={20} />
@@ -252,15 +338,15 @@ export default function PasangApk() {
                 )}
 
                 {/* shutter */}
-                <div className="absolute bottom-4 left-0 right-0 flex justify-center">
+                <div className="absolute bottom-3 left-0 right-0 flex justify-center">
                   <button
                     onClick={takePhoto}
                     disabled={!cameraReady}
-                    className={`w-16 h-16 rounded-full border-4 flex items-center justify-center active:scale-95 transition
+                    className={`w-14 h-14 rounded-full border-4 flex items-center justify-center active:scale-95 transition
                       ${cameraReady ? "bg-white/90 border-blue-600" : "bg-white/30 border-slate-400 cursor-not-allowed"}`}
                     aria-label="Ambil foto"
                   >
-                    <span className={`w-12 h-12 rounded-full ${cameraReady ? "bg-blue-600" : "bg-slate-400"}`} />
+                    <span className={`w-10 h-10 rounded-full ${cameraReady ? "bg-blue-600" : "bg-slate-400"}`} />
                   </button>
                 </div>
               </>
@@ -268,23 +354,31 @@ export default function PasangApk() {
 
             {mode === "review" && (
               <>
-                <img src={photoDataUrl} alt="Hasil foto" className="w-full h-[68vh] object-cover" />
+                <div className="relative w-full h-full">
+                  <img src={photoDataUrl} alt="Hasil foto" className="w-full h-full object-cover" />
+                </div>
 
-                <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center gap-6">
+                <div className="absolute bottom-4 left-0 right-0 flex items-center justify-center gap-6">
                   <button
                     onClick={retake}
-                    className="w-14 h-14 rounded-full bg-white/90 border border-slate-200 flex items-center justify-center active:scale-95 transition"
+                    className="w-12 h-12 rounded-full bg-white/90 border border-slate-200 flex items-center justify-center active:scale-95 transition"
                     aria-label="Ulang foto"
                   >
-                    <Icon icon="mdi:close" width={28} className="text-rose-600" />
+                    <Icon icon="mdi:close" width={24} className="text-rose-600" />
                   </button>
 
                   <button
                     onClick={confirm}
-                    className="w-14 h-14 rounded-full bg-blue-600 text-white flex items-center justify-center shadow active:scale-95 transition"
+                    disabled={isSubmitting}
+                    className={`w-12 h-12 rounded-full text-white flex items-center justify-center shadow active:scale-95 transition
+                      ${isSubmitting ? "bg-slate-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
                     aria-label="Simpan"
                   >
-                    <Icon icon="mdi:check" width={30} />
+                    {isSubmitting ? (
+                      <Icon icon="mdi:loading" width={26} className="animate-spin" />
+                    ) : (
+                      <Icon icon="mdi:check" width={26} />
+                    )}
                   </button>
                 </div>
               </>
@@ -293,35 +387,41 @@ export default function PasangApk() {
             <canvas ref={canvasRef} className="hidden" />
           </div>
 
-          {/* bottom info */}
-          <div className="p-5 bg-white border-t border-slate-200">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-                  <Icon icon="mdi:map-marker" width={22} className="text-blue-700" />
+          {/* bottom info - compact */}
+          <div className="p-3 bg-white border-t border-slate-200 flex-shrink-0">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2 flex-1 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                  <Icon icon="mdi:map-marker" width={18} className="text-blue-700" />
                 </div>
-                <div>
-                  <p className="text-sm font-bold text-slate-800">Lokasi (GPS)</p>
-                  <p className="text-sm text-slate-600">{locationText}</p>
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className={`text-xs font-bold px-3 py-1 rounded-full border ${accuracyBadgeClass}`}>
-                      {coords.accuracy ? `±${Math.round(coords.accuracy)}m • ${accuracyLabel}` : accuracyLabel}
-                    </span>
-                    {gettingLocation && <span className="text-xs text-slate-400">mengambil...</span>}
-                  </div>
-                  <p className="text-xs text-slate-400 mt-2">
-                    Jam otomatis: <span className="font-semibold">{formatJam(now)}</span>
+                <div className="flex-1 min-w-0">
+                  {/* Alamat */}
+                  <p className="text-xs font-bold text-slate-800">Alamat</p>
+                  <p className="text-xs text-slate-600 break-words line-clamp-2">
+                    {gettingAddress ? (
+                      <span className="text-slate-400 italic">Mengambil alamat...</span>
+                    ) : address ? (
+                      address
+                    ) : (
+                      <span className="text-slate-400">Belum ada alamat</span>
+                    )}
                   </p>
+
+                  {/* Latitude & Longitude */}
+                  <div className="mt-1.5 pt-1.5 border-t border-slate-100">
+                    <p className="text-xs font-bold text-slate-800">Koordinat</p>
+                    <p className="text-xs text-slate-600 font-mono">{locationText}</p>
+                  </div>
                 </div>
               </div>
 
               <button
                 onClick={getLocation}
-                disabled={gettingLocation}
-                className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition
-                  ${gettingLocation ? "bg-slate-200 text-slate-500" : "bg-blue-100 text-blue-800 hover:bg-blue-200 border border-blue-200"}`}
+                disabled={gettingLocation || gettingAddress}
+                className={`px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1.5 transition flex-shrink-0
+                  ${gettingLocation || gettingAddress ? "bg-slate-200 text-slate-500" : "bg-blue-100 text-blue-800 hover:bg-blue-200 border border-blue-200"}`}
               >
-                <Icon icon="mdi:crosshairs-gps" width={18} />
+                <Icon icon="mdi:crosshairs-gps" width={16} />
                 GPS
               </button>
             </div>

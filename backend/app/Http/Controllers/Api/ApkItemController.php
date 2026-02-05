@@ -22,6 +22,16 @@ class ApkItemController extends Controller
         return $paslonId ? (int)$paslonId : null;
     }
 
+    private function koordinatorApkPaslonId(int $userId): ?int
+    {
+        $paslonId = DB::table('apk_koordinators')
+            ->where('user_id', $userId)
+            ->whereNull('deleted_at')
+            ->value('paslon_id');
+
+        return $paslonId ? (int)$paslonId : null;
+    }
+
     public function index(Request $request)
     {
         /** @var User|null $user */
@@ -30,7 +40,12 @@ class ApkItemController extends Controller
             return response()->json(['status' => false, 'message' => 'Unauthorized'], 401);
         }
 
+        // Coba cari paslon_id dari admin_apks atau apk_koordinators
         $paslonId = $this->adminApkPaslonId($user->id);
+        if (!$paslonId) {
+            $paslonId = $this->koordinatorApkPaslonId($user->id);
+        }
+        
         if (!$paslonId) {
             return response()->json(['status' => false, 'message' => 'Paslon tidak ditemukan'], 403);
         }

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class ContentPlan extends Model
 {
     protected $fillable = [
-        'paslon_id',          // ✅ tambah
+        'paslon_id',       
         'title',
         'description',
         'posting_date',
@@ -60,11 +60,13 @@ class ContentPlan extends Model
         return $this->hasMany(ContentPlatformAd::class, 'content_plan_id');
     }
 
-    public function getTotalBudgetAttribute()
+    public function getTotalBudgetActiveAttribute()
     {
-        $budgetContent = $this->budgetWithTrashed?->budget_content ?? 0;
+        // budget_content yang aktif (deleted_at null)
+        $budgetContent = (float) ($this->budget?->budget_content ?? 0);
 
-        $adsBudget = ContentPlatformAd::withTrashed()
+        // ads yang aktif (deleted_at null)
+        $adsBudget = (float) ContentPlatformAd::query()
             ->where('content_plan_id', $this->id)
             ->sum('budget_ads');
 

@@ -241,13 +241,32 @@ export default function Index() {
   };
 
   const fetchBudget = async () => {
-    try {
-      const res = await api.get("/budget");
-      setBudgetSummary(res.data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  try {
+    const res = await api.get("/budget");
+
+    // backend: { status: true, data: { total_budget, used_budget, remaining_budget } }
+    const b = res?.data?.data ?? {};
+
+    setBudgetSummary({
+      total_budget: Number(b.total_budget ?? 0),
+      used_budget: {
+        content: 0, // belum ada breakdown dari backend
+        ads: 0,     // belum ada breakdown dari backend
+        total: Number(b.used_budget ?? 0),
+      },
+      remaining_budget: Number(b.remaining_budget ?? 0),
+    });
+  } catch (err) {
+    console.error(err);
+    toast.error("Gagal memuat budget");
+    setBudgetSummary({
+      total_budget: 0,
+      used_budget: { content: 0, ads: 0, total: 0 },
+      remaining_budget: 0,
+    });
+  }
+};
+  
 
   const fetchPlatforms = async () => {
     try {

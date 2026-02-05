@@ -62,14 +62,18 @@ export default function Relawan() {
   };
 
   // ================= FETCH DATA =================
-  const fetchRelawan = async () => {
-    const res = await api.get("/relawan", {
-      params: activeFilters,
-    });
-    const result = res.data.data;
+const fetchRelawan = async () => {
+  try {
+    const res = await api.get("/relawan/kunjungan", { params: activeFilters });
+    const result = res.data?.data;
     if (Array.isArray(result)) return result;
     return result?.data || [];
-  };
+  } catch (err) {
+    console.log("RELAWAN ERROR:", err?.response?.status, err?.response?.data);
+    throw err; // biar react-query set isError
+  }
+};
+
 
   const {
     data: relawan = [],
@@ -136,30 +140,58 @@ export default function Relawan() {
   // ... (Bagian Export, Import, dan Delete tidak berubah logic-nya, hanya dirapikan)
   
   const handleConfirmExport = async () => {
-    if (!exportPassword) return toast.error("Masukkan password terlebih dahulu");
-    const toastId = "export-relawan";
-    try {
-      setExporting(true);
-      toast.loading("Menyiapkan file Excel...", { id: toastId });
-      const res = await api.post("/relawan/export-all", { password: exportPassword }, { responseType: "blob" });
-      
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement("a");
-      link.href = url;
-      const filename = res.headers["content-disposition"]?.split("filename=")[1]?.replace(/"/g, "") || "relawan.xlsx";
-      link.setAttribute("download", filename);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      
-      toast.success("Export berhasil", { id: toastId });
-      closeExportModal();
-    } catch (err) {
-      toast.error(err.response?.status === 422 ? err.response?.data?.message : "Gagal export", { id: toastId });
-    } finally {
-      setExporting(false);
+  if (!exportPassword) return toast.error("Masukkan password terlebih dahulu");
+  const toastId = "export-relawan";
+
+  try {
+    setExporting(true);
+    toast.loading("Menyiapkan file Excel...", { id: toastId });
+
+    const res = await api.post(
+      "/relawan/export-kunjungan",
+      { password: exportPassword },
+      {
+        responseType: "blob",
+        validateStatus: (status) => status < 500, // biar 4xx tetap masuk ke try
+      }
+    );
+
+    // ✅ kalau ternyata backend ngirim JSON error, baca dulu
+    const contentType = res.headers["content-type"];
+    if (contentType?.includes("application/json")) {
+      const text = await res.data.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { message: text };
+      }
+      throw new Error(data?.message || "Export gagal");
     }
-  };
+
+    // ✅ kalau beneran file excel
+    const url = window.URL.createObjectURL(res.data);
+    const link = document.createElement("a");
+    link.href = url;
+
+    const filename =
+      res.headers["content-disposition"]?.split("filename=")[1]?.replace(/"/g, "") ||
+      "relawan_kunjungan.xlsx";
+
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    toast.success("Export berhasil", { id: toastId });
+    closeExportModal();
+  } catch (err) {
+    toast.error(err?.message || "Gagal export", { id: toastId }); // ✅ pasti ada teks
+  } finally {
+    setExporting(false);
+  }
+};
+
 
   const closeExportModal = () => {
     setShowPasswordModal(false);
@@ -175,7 +207,7 @@ export default function Relawan() {
     formData.append("file", file);
 
     try {
-      const res = await api.post("/relawan/import", formData, { headers: { "Content-Type": "multipart/form-data" } });
+      const res = await api.post("/relawan/import/kunjungan", formData, { headers: { "Content-Type": "multipart/form-data" } });
       setImportResult(res.data.data);
       if (res.data.data.success_count > 0) {
         setSuccessMessage(`${res.data.data.success_count} relawan berhasil ditambahkan!`);
@@ -225,12 +257,15 @@ export default function Relawan() {
     }
   };
 
+  const roleId = Number(localStorage.getItem("role_id"));
+  const isAdminPaslon = roleId === 2;
+
   return (
     <div className="space-y-6">
       {/* ================= HEADER ================= */}
       <div className="bg-white rounded-lg p-7 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4 ">
         <h1 className="text-3xl font-bold text-blue-900 ">Data Relawan Kunjungan</h1>
-        {role !== "admin" && (
+        {!isAdminPaslon && (
           <div className="flex flex-col sm:flex-row gap-3">
             <button onClick={() => setOpenImport(true)} className="bg-blue-500/15 text-blue-800 border border-blue-200/40 px-4 py-2 rounded-lg hover:bg-blue-500/25">
               Import Data Relawan
@@ -585,7 +620,7 @@ export default function Relawan() {
       )}
 
       {/* Modal Import */}
-      {openImport && createPortal(
+      {!isAdminPaslon && openImport && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={closeImportModal} />
           <div className="relative bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 z-10">

@@ -14,14 +14,20 @@ use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithColumnFormatting;
 use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
+use Maatwebsite\Excel\Concerns\WithCustomValueBinder;
+use PhpOffice\PhpSpreadsheet\Cell\Cell;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Cell\DefaultValueBinder;
 
-class RelawanKunjunganExport implements
+
+class RelawanKunjunganExport extends DefaultValueBinder implements
     FromCollection,
     WithHeadings,
     ShouldAutoSize,
     WithCustomStartCell,
     WithEvents,
-    WithColumnFormatting
+    WithColumnFormatting,
+    WithCustomValueBinder
 {
     protected string $mode; // koordinator | admin_paslon
     protected ?int $koorKunjunganId;
@@ -44,9 +50,20 @@ class RelawanKunjunganExport implements
         }
     }
 
+    public function bindValue(Cell $cell, $value)
+    {
+        // Paksa kolom-kolom ini jadi TEXT (biar gak jadi scientific notation / hilang leading zero)
+        if (in_array($cell->getColumn(), ['B', 'E', 'G'], true)) {
+            $cell->setValueExplicit((string) $value, DataType::TYPE_STRING);
+            return true;
+        }
+
+        return parent::bindValue($cell, $value);
+    }
+
     public function startCell(): string
     {
-        return $this->mode === 'koordinator' ? 'A3' : 'A1';
+        return $this->mode === 'koordinator' ? 'A4' : 'A1';
     }
 
     public function collection()
@@ -80,7 +97,7 @@ class RelawanKunjunganExport implements
             if ($this->mode === 'admin_paslon') {
                 return [
                     $relawan->nama,
-                    $relawan->nik,
+                    (string) $relawan->nik,
                     $relawan->user->email ?? '-',
                     $password,
                     (string)($relawan->no_hp ?? '-'),
@@ -90,21 +107,21 @@ class RelawanKunjunganExport implements
                     $relawan->city->city ?? '-',
                     $relawan->district->district ?? '-',
                     $relawan->village->village ?? '-',
-                    ((int)$relawan->is_apk === 1 ? 'DOUBLE_JOB' : 'KUNJUNGAN'),
+                    ((int)$relawan->is_apk === 1 ? 'KUNJUNGAN & APK' : 'KUNJUNGAN'),
                 ];
             }
 
             // koordinator
             return [
                 $relawan->nama,
-                $relawan->nik,
+                (string) $relawan->nik,
                 $relawan->user->email ?? '-',
                 $password,
                 (string)($relawan->no_hp ?? '-'),
                 $relawan->alamat ?? '-',
                 $relawan->tps ?? '-',
                 $relawan->village->village ?? '-',
-                ((int)$relawan->is_apk === 1 ? 'DOUBLE_JOB' : 'KUNJUNGAN'),
+                ((int)$relawan->is_apk === 1 ? 'KUNJUNGAN & APK' : 'KUNJUNGAN'),
             ];
         });
     }
@@ -143,13 +160,19 @@ class RelawanKunjunganExport implements
 
     public function columnFormats(): array
     {
-        // ADMIN: No HP kolom E
         if ($this->mode === 'admin_paslon') {
-            return ['E' => NumberFormat::FORMAT_TEXT];
+            return [
+                'B' => NumberFormat::FORMAT_TEXT, // NIK
+                'E' => NumberFormat::FORMAT_TEXT, // No HP
+                'G' => NumberFormat::FORMAT_TEXT, // TPS
+            ];
         }
 
-        // KOORDINATOR: No HP kolom E juga (karena susunan kolom beda dari export lamamu)
-        return ['E' => NumberFormat::FORMAT_TEXT];
+        return [
+            'B' => NumberFormat::FORMAT_TEXT, // NIK
+            'E' => NumberFormat::FORMAT_TEXT, // No HP
+            'G' => NumberFormat::FORMAT_TEXT, // TPS
+        ];
     }
 
     public function registerEvents(): array
@@ -163,9 +186,9 @@ class RelawanKunjunganExport implements
                     ->getFont()->setBold(true);
 
                 if ($this->mode === 'koordinator') {
-                    $event->sheet->setCellValue('A1', 'Koordinator');
+                    $event->sheet->setCellValue('A1', 'Koordinator :');
                     $event->sheet->setCellValue('B1', $this->namaKoordinator ?? '-');
-                    $event->sheet->setCellValue('A2', 'Kelurahan');
+                    $event->sheet->setCellValue('A2', 'Kelurahan :');
                     $event->sheet->setCellValue('B2', $this->namaKelurahan ?? '-');
 
                     $event->sheet->getStyle('A1:B2')->getFont()->setBold(true);
