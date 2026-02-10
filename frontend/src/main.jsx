@@ -9,6 +9,7 @@ import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { Toaster } from "react-hot-toast";
+import { createPortal } from "react-dom";
 
 delete L.Icon.Default.prototype._getIconUrl;
 
@@ -17,7 +18,6 @@ L.Icon.Default.mergeOptions({
   iconUrl: markerIcon,
   shadowUrl: markerShadow,
 });
-
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -31,11 +31,15 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById("root")).render(
   <BrowserRouter>
     <QueryClientProvider client={queryClient}>
-      <Toaster
-        position="top-center"
-        containerStyle={{ zIndex: 10000 }}
-        reverseOrder={false}
-      />
+      {createPortal(
+        <Toaster
+          position="top-center"
+          containerStyle={{ zIndex: 1000000 }}
+          toastOptions={{ style: { zIndex: 1000000 } }}
+          reverseOrder={false}
+        />,
+        document.body
+      )}
       <App />
     </QueryClientProvider>
   </BrowserRouter>

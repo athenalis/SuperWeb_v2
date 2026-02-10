@@ -46,6 +46,7 @@ export default function RelawanApkDetail() {
   const role = localStorage.getItem("role");
 
   const [data, setData] = useState(null);
+  const [koor, setKoor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [ormasList, setOrmasList] = useState([]);
@@ -62,7 +63,10 @@ export default function RelawanApkDetail() {
 
     api
       .get(`/relawan/apk/${id}`)
-      .then((res) => setData(res.data.data))
+      .then((res) => {
+        setData(res.data.data);
+        setKoor(res.data.koor);
+      })
       .catch((err) => {
         if (err.response?.status === 404) {
           setNotFound(true);
@@ -169,10 +173,7 @@ export default function RelawanApkDetail() {
                 <Field label="Email" value={data.user?.email || "-"} />
                 <Field label="Nomor Telepon" value={data.no_hp} />
                 <Field label="Ormas" value={ormasName} />
-                <Field
-                  label="Koordinator"
-                  value={data.koordinator?.nama || data.koordinator || "-"}
-                />
+                <Field label="Koordinator" value={koor?.name || "-"} />
                 <Field label="Alamat Detail" value={data.alamat} full />
               </Grid>
             </Section>
@@ -195,11 +196,10 @@ export default function RelawanApkDetail() {
               </h3>
               <div className="flex items-center gap-3 sm:gap-4">
                 <div
-                  className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full ${
-                    data.status === "active"
-                      ? "bg-green-500 animate-pulse"
-                      : "bg-red-500"
-                  }`}
+                  className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full ${data.status === "active"
+                    ? "bg-green-500 animate-pulse"
+                    : "bg-red-500"
+                    }`}
                 ></div>
                 <span className="text-lg sm:text-xl font-bold text-slate-800">
                   {data.status === "active" ? "Aktif" : "Tidak Aktif"}

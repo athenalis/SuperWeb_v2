@@ -3,6 +3,7 @@ import { Icon } from "@iconify/react";
 import Select from "react-select";
 import toast from "react-hot-toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createPortal } from "react-dom";
 import api from "../../lib/axios";
 
 /* =====================
@@ -93,6 +94,7 @@ export default function SuperadminDashboard() {
   const [selectedPaslon, setSelectedPaslon] = useState(null);
   const [selectedAdmin, setSelectedAdmin] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null); 
 
   const [newPaslon, setNewPaslon] = useState({
     cagub: "",
@@ -231,7 +233,7 @@ export default function SuperadminDashboard() {
     },
     onSuccess: async (payload) => {
       if (payload?.status || payload?.success) {
-        toast.success(payload?.message || "Paslon berhasil dibuat");
+        toast.success("Paslon berhasil dibuat");
         await qc.invalidateQueries({ queryKey: qk.paslons });
         setShowAddPaslon(false);
         setNewPaslon({
@@ -260,7 +262,7 @@ export default function SuperadminDashboard() {
     },
     onSuccess: async (payload) => {
       if (payload?.status || payload?.success) {
-        toast.success(payload?.message || "Admin Paslon berhasil dibuat");
+        toast.success("Admin Paslon berhasil dibuat");
 
         const user = payload?.data?.user;
         if (user?.email && user?.password) {
@@ -303,6 +305,28 @@ export default function SuperadminDashboard() {
       }
     },
   });
+
+  const deletePaslon = useMutation({
+  mutationFn: async (paslonId) => {
+    const res = await api.delete(`/paslon/${paslonId}`);
+    return res.data;
+  },
+  onSuccess: async (payload) => {
+    if (payload?.status || payload?.success) {
+      toast.success("Paslon dan admin paslon berhasil dihapus");
+      await qc.invalidateQueries({ queryKey: qk.paslons });
+      await qc.invalidateQueries({ queryKey: qk.adminPaslons }); // admin ikut refresh
+      // kalau pas lagi buka modal detail paslon yang sama, tutup aja biar aman
+      setSelectedPaslon(null);
+    } else {
+      toast.error(payload?.message || "Gagal menghapus paslon");
+    }
+  },
+  onError: (err) => {
+    toast.error(err?.response?.data?.message || err?.message || "Gagal menghapus paslon");
+  },
+});
+
 
   const adminRows = useMemo(() => {
     const list = adminListQuery.data || [];
@@ -364,6 +388,11 @@ export default function SuperadminDashboard() {
     } finally {
       setLoadingDetail(false);
     }
+  };
+
+  const handleDeletePaslon = (e, paslon) => {
+    e.stopPropagation();
+    setConfirmDelete({ id: paslon.id, name: paslon.name, nomor_urut: paslon.nomor_urut });
   };
 
   const handleViewAdminDetail = async (admin) => {
@@ -523,9 +552,22 @@ export default function SuperadminDashboard() {
                   </div>
 
                   <div className="p-5">
-                    <h3 className="font-semibold text-slate-900 text-lg leading-snug line-clamp-2">
-                      {p.name}
-                    </h3>
+                    <div className="flex items-start justify-between gap-3">
+                      <h3 className="font-semibold text-slate-900 text-lg leading-snug line-clamp-2">
+                        {p.name}
+                      </h3>
+
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeletePaslon(e, p)}
+                        disabled={deletePaslon.isPending}
+                        className="shrink-0 p-2 rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-60"
+                        title="Hapus paslon"
+                      >
+                        <Icon icon="mynaui:trash" className="w-5 h-5" />
+                      </button>
+                    </div>
+
                     <p className="text-sm text-slate-500 mt-2">
                       {p.parties?.length || 0} partai pengusung
                     </p>
@@ -628,20 +670,22 @@ export default function SuperadminDashboard() {
             <div className="space-y-5">
               <InputField
                 label="Nama Calon Gubernur"
-                placeholder="Contoh: Ara"
+                requiredMark
+                placeholder="Masukkan nama calon gubernur"
                 value={newPaslon.cagub}
                 onChange={(e) => setNewPaslon((p) => ({ ...p, cagub: e.target.value }))}
               />
               <InputField
                 label="Nama Calon Wakil Gubernur"
-                placeholder="Contoh: Reva"
+                requiredMark
+                placeholder="Masukkan nama calon wakil gubernur"
                 value={newPaslon.cawagub}
                 onChange={(e) => setNewPaslon((p) => ({ ...p, cawagub: e.target.value }))}
               />
 
               <div className="space-y-2">
                 <label className="block text-md font-semibold text-slate-800">
-                  Partai Pengusung
+                  Partai Pengusung <span className="text-red-500">*</span>
                 </label>
                 <Select
                   isMulti
@@ -694,7 +738,7 @@ export default function SuperadminDashboard() {
 
               <div className="space-y-2">
                 <label className="block text-md font-semibold text-slate-800">
-                  Foto Paslon
+                  Foto Paslon <span className="text-red-500">*</span>
                 </label>
                 <div
                   className="border-2 border-dashed border-slate-300 rounded-2xl p-6 text-center hover:border-blue-400 hover:bg-blue-50 transition-colors bg-slate-50 cursor-pointer"
@@ -744,6 +788,56 @@ export default function SuperadminDashboard() {
             />
           </Modal>
         )}
+
+        {confirmDelete && (
+        <Modal
+          onClose={() => setConfirmDelete(null)}
+          title="Peringatan!"
+        >
+          <div className="space-y-4">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <div className="flex items-start gap-3">
+                <Icon icon="mdi:alert" className="w-6 h-6 text-amber-700 mt-0.5" />
+                <div className="text-sm text-amber-900">
+                  <div className="font-semibold mb-1">Aksi ini tidak bisa dibatalkan.</div>
+                  <div>
+                    Jika paslon ini dihapus, maka <b>AKUN ADMIN PASLON</b> yang terkait juga akan ikut terhapus.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="text-sm text-slate-700">
+              Yakin ingin menghapus:
+              <div className="font-semibold text-slate-900 mt-1">
+                {confirmDelete.name} (No Urut {confirmDelete.nomor_urut})
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(null)}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50"
+              >
+                Batal
+              </button>
+
+              <button
+                type="button"
+                disabled={deletePaslon.isPending}
+                onClick={() => {
+                  deletePaslon.mutate(confirmDelete.id);
+                  setConfirmDelete(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+              >
+                {deletePaslon.isPending ? "Menghapus..." : "Hapus"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
         {/* MODAL ADD ADMIN */}
         {showAddAdmin && (
@@ -993,14 +1087,16 @@ export default function SuperadminDashboard() {
         )}
 
         {/* Loading overlay */}
-        {loadingDetail && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl p-6 shadow-xl flex items-center gap-4">
-              <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-              <span className="text-slate-700 font-medium">Memuat detail...</span>
-            </div>
-          </div>
-        )}
+        {loadingDetail &&
+          createPortal(
+            <div className="fixed top-0 left-0 w-screen h-screen z-[99999] flex items-center justify-center bg-slate-900/30 backdrop-blur-sm">
+              <div className="bg-white rounded-2xl p-6 shadow-xl flex items-center gap-4">
+                <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                <span className="text-slate-700 font-medium">Memuat detail...</span>
+              </div>
+            </div>,
+            document.body
+          )}
       </div>
     </div>
   );
@@ -1038,7 +1134,7 @@ function Modal({ children, onClose, title }) {
 
   return (
     <div
-      className="fixed inset-0 z-[9000] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[99999] flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
     >
@@ -1102,11 +1198,16 @@ function ModalActions({ onCancel, onSubmit, submitText = "Simpan", isSubmitting 
   );
 }
 
-function InputField({ label, icon, ...props }) {
+function InputField({ label, icon, requiredMark = false, ...props }) {
   return (
     <div className="space-y-2">
-      <label className="block text-md font-semibold text-slate-800">{label}</label>
+      <label className="block text-md font-semibold text-slate-800">
+        {label}{" "}
+        {requiredMark && <span className="text-red-500">*</span>}
+      </label>
+
       <div className="relative">
+        {/* <label className="block text-md font-semibold text-slate-800">{label}</label> */}
         {icon && <div className="absolute left-3 top-1/2 -translate-y-1/2">{icon}</div>}
         <input
           {...props}

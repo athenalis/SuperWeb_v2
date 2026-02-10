@@ -33,7 +33,7 @@ export default function EditRelawan() {
       LOAD DETAIL RELAWAN
   ============================= */
   useEffect(() => {
-    api.get(`/relawan/${id}`)
+    api.get(`/relawan/kunjungan/${id}`)
       .then((res) => {
         const d = res.data.data;
 
@@ -141,7 +141,7 @@ const handleSubmit = async (e) => {
       });
     }
 
-    navigate(`/relawan/${id}`);
+    navigate(`/relawan/kunjungan/${id}`);
   } catch (err) {
     console.log(err.response?.data);
 
@@ -340,7 +340,7 @@ const handleSubmit = async (e) => {
 
           <button
             type="button"
-            onClick={() => navigate(`/relawan/${id}`)}
+            onClick={() => navigate(`/relawan/kunjungan/${id}`)}
             className="text-gray-500"
           >
             Batal

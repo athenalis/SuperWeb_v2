@@ -192,7 +192,6 @@ const fetchRelawan = async () => {
   }
 };
 
-
   const closeExportModal = () => {
     setShowPasswordModal(false);
     setExportPassword("");
@@ -242,9 +241,31 @@ const fetchRelawan = async () => {
     onError: () => toast.error("Gagal menghapus relawan", { id: "delete-relawan" }),
   });
 
+  // ===== PROMOTE RELAWAN KUNJUNGAN -> RELAWAN APK =====
+  const [promoteTarget, setPromoteTarget] = useState(null);
+
+  const promoteToRelawanApk = async (id) => {
+    const res = await api.patch(`/double-job/${id}`);
+    return res.data;
+  };
+
+  const promoteMutation = useMutation({
+    mutationFn: (id) => promoteToRelawanApk(id),
+    onMutate: () => toast.loading("Mengubah jadi Relawan APK...", { id: "promote-apk" }),
+    onSuccess: () => {
+      toast.success("Berhasil jadi Relawan APK", { id: "promote-apk" });
+      queryClient.invalidateQueries(["relawan"]);
+      setPromoteTarget(null);
+    },
+    onError: (err) => {
+      const msg = err?.response?.data?.message || "Gagal mengubah role";
+      toast.error(msg, { id: "promote-apk" });
+    },
+  });
+
   const downloadTemplate = async () => {
     try {
-      const res = await api.get("/relawan/template", { responseType: "blob" });
+      const res = await api.get("/relawan-kunjungan/template", { responseType: "blob" });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement("a");
       link.href = url;
@@ -445,16 +466,42 @@ const fetchRelawan = async () => {
                   </div>
                 )}
               </div>
-              <div className="pt-3 border-t flex items-center gap-2">
-                {role !== "admin" && (
-                  <button onClick={() => setDeleteTarget(item)} className="p-2 rounded-lg text-red-600 border border-red-200 hover:bg-red-50 shrink-0">
-                    <Icon icon="solar:trash-bin-trash-outline" width={20} />
-                  </button>
+              <div className="flex items-center justify-center gap-2">
+                {!isAdminPaslon && (
+                  <>
+                    {/* DELETE */}
+                    <button
+                      onClick={() => setDeleteTarget(item)}
+                      title="Hapus"
+                      className="w-9 h-9 flex items-center justify-center rounded-lg text-red-600 border border-red-400 bg-white hover:bg-red-600 hover:text-white hover:border-red-600 transition-all shadow-sm hover:shadow-red-500/30"
+                    >
+                      <Icon icon="solar:trash-bin-trash-outline" width={18} />
+                    </button>
+                  </>
                 )}
-                <button onClick={() => navigate(`/relawan/${item.id}`)} className="flex-1 bg-blue-100 hover:bg-blue-100 text-blue-700 py-2.5 rounded-lg flex items-center justify-center transition-colors">
-                  <Icon icon="si:eye-line" width={20} />
-                  <span className="ml-2 text-xs font-bold">Detail</span>
+
+                {/* DETAIL */}
+                <button
+                  onClick={() => navigate(`/relawan/kunjungan/${item.id}`)}
+                  title="Lihat Detail"
+                  className="w-9 h-9 flex items-center justify-center text-blue-600 border border-blue-400 bg-white rounded-lg hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm hover:shadow-blue-500/30"
+                >
+                  <Icon icon="si:eye-line" width={18} />
                 </button>
+
+                {!isAdminPaslon && (
+                  <>
+                    {/* JADIKAN APK */}
+                    <button
+                      type="button"
+                      onClick={() => setPromoteTarget(item)}
+                      title="Jadikan Relawan APK"
+                      className="w-9 h-9 flex items-center justify-center rounded-lg text-white border border-blue-900 bg-blue-900 hover:bg-blue-800 hover:border-blue-800 transition-all shadow-sm hover:shadow-blue-500/30"
+                    >
+                      <Icon icon="mdi:account-convert" width={18} />
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           ))}
@@ -529,23 +576,56 @@ const fetchRelawan = async () => {
               {/* AKSI: Center */}
               <td className="px-5 py-4">
                 <div className="flex items-center justify-center gap-2">
-                  {role !== "admin" && (
-                    <button 
-                      onClick={() => setDeleteTarget(item)} 
+                {!isAdminPaslon && (
+                  <>
+                    <button
+                      onClick={() => setDeleteTarget(item)}
                       title="Hapus"
                       className="w-9 h-9 flex items-center justify-center rounded-lg text-red-600 border border-red-400 bg-white hover:bg-red-600 hover:text-white hover:border-red-600 transition-all shadow-sm hover:shadow-red-500/30"
                     >
                       <Icon icon="solar:trash-bin-trash-outline" width={18} />
                     </button>
-                  )}
-                  <button 
-                    onClick={() => navigate(`/relawan/${item.id}`)} 
-                    title="Lihat Detail"
-                    className="w-9 h-9 flex items-center justify-center text-blue-600 border border-blue-400 bg-white rounded-lg hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm hover:shadow-blue-500/30"
-                  >
-                    <Icon icon="si:eye-line" width={18} />
-                  </button>
-                </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setPromoteTarget(item)}
+                      title="Jadikan Relawan APK"
+                      className="w-9 h-9 flex items-center justify-center rounded-lg text-white border border-blue-900 bg-blue-900 hover:bg-blue-800 hover:border-blue-800 transition-all shadow-sm hover:shadow-blue-500/30"
+                    >
+                      <Icon icon="mdi:account-convert" width={18} />
+                    </button>
+                  </>
+                )}
+
+                <button
+                  onClick={() => navigate(`/relawan/kunjungan/${item.id}`)}
+                  title="Lihat Detail"
+                  className="w-9 h-9 flex items-center justify-center text-blue-600 border border-blue-400 bg-white rounded-lg hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm hover:shadow-blue-500/30"
+                >
+                  <Icon icon="si:eye-line" width={18} />
+                </button>
+
+                {!isAdminPaslon && (
+                  <>
+                    <button
+                      onClick={() => setDeleteTarget(item)}
+                      title="Hapus"
+                      className="w-9 h-9 flex items-center justify-center rounded-lg text-red-600 border border-red-400 bg-white hover:bg-red-600 hover:text-white hover:border-red-600 transition-all shadow-sm hover:shadow-red-500/30"
+                    >
+                      <Icon icon="solar:trash-bin-trash-outline" width={18} />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPromoteTarget(item)}
+                      title="Jadikan Relawan APK"
+                      className="w-9 h-9 flex items-center justify-center rounded-lg text-white border border-blue-900 bg-blue-900 hover:bg-blue-800 hover:border-blue-800 transition-all shadow-sm hover:shadow-blue-500/30"
+                    >
+                      <Icon icon="mdi:account-convert" width={18} />
+                    </button>
+                  </>
+                )}
+              </div>
               </td>
             </tr>
           ))}
@@ -614,6 +694,38 @@ const fetchRelawan = async () => {
                 </div>
               </>
             )}
+          </div>
+        </div>,
+        document.getElementById("modal-root")
+      )}
+
+      {/* Modal jadiin relawan kunjungan jadi relawan apk juga */}
+      {promoteTarget && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setPromoteTarget(null)} />
+          <div className="relative bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 z-10">
+            <h2 className="text-xl font-semibold text-slate-800 mb-2">Jadikan Relawan APK</h2>
+            <p className="text-slate-600 mb-6">
+              Yakin mau jadikan <b>{promoteTarget.nama}</b> sebagai <b>Relawan APK</b>?
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setPromoteTarget(null)}
+                disabled={promoteMutation.isPending}
+                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+              >
+                Batal
+              </button>
+
+              <button
+                onClick={() => promoteMutation.mutate(promoteTarget.id)}
+                disabled={promoteMutation.isPending}
+                className="px-5 py-2 rounded-lg bg-blue-900 text-white hover:bg-blue-800 disabled:opacity-50"
+              >
+                {promoteMutation.isPending ? "Memproses..." : "Konfirmasi"}
+              </button>
+            </div>
           </div>
         </div>,
         document.getElementById("modal-root")

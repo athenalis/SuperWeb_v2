@@ -151,6 +151,27 @@ const getPriorityTextColor = (hexColor = "#ffffff") => {
   return "#ffffff";
 };
 
+const fmtArea = (n, digits = 2) =>
+  Number(n || 0).toLocaleString("id-ID", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+
+const endpointByLevel = {
+  kota: "/api/peta/dpt/kota",
+  kecamatan: "/api/peta/dpt/kecamatan",
+  kelurahan: "/api/peta/dpt/kelurahan",
+};
+
+async function loadDpt(level) {
+  const res = await fetch(endpointByLevel[level]);
+  const json = await res.json();
+
+  setLegend(json.legend || []);
+  if (level === "kota") setDptKota(toMap(json.data, "kota"));
+  if (level === "kecamatan") setDptKecamatan(toMap(json.data, "kecamatan"));
+  if (level === "kelurahan") setDptKelurahan(toMap(json.data, "kelurahan"));
+}
 
 /* =======================
    ZOOM HANDLER
@@ -237,6 +258,7 @@ export default function MapDpt({
   dptKecamatan,
   dptKelurahan,
   legend,
+  legendByLevel,
   selectedCityName,
   selectedDistrictName,
   onRegionClick,
@@ -278,6 +300,11 @@ export default function MapDpt({
       }
     }
   }, [currentLevel, prevLevel, onLevelChange]);
+
+  const activeLegend = useMemo(() => {
+    const pick = legendByLevel?.[currentLevel];
+    return (pick && pick.length > 0) ? pick : (legend || []);
+  }, [legendByLevel, legend, currentLevel]);
 
   // Get GeoName
   const getGeoName = (properties = {}, level) => {
@@ -432,10 +459,17 @@ export default function MapDpt({
           <span>Total DPT</span>
           <b>${fmt(data.total_dpt)}</b>
         </div>
+
+        <div style="display:flex;justify-content:space-between;gap:12px;margin-bottom:2px">
+          <span>Luas Wilayah</span>
+          <b>${fmtArea(data.area_km2)} km²</b>
+        </div>
+
         <div style="display:flex;justify-content:space-between;gap:12px;margin-bottom:2px">
           <span>Kepadatan</span>
-          <span>${fmt(data.density)} /km²</span>
-         </div>
+          <b>${fmt(data.density)} DPT/km²</b>
+        </div>
+
         <div style="margin-top:6px">
           <span
             style="
@@ -598,32 +632,28 @@ export default function MapDpt({
       </div>
 
       {/* Legend - Bottom Left */}
-      {legend && legend.length > 0 && (
-        <div
-          className="
-            absolute bottom-3 left-3
-            bg-white/60 backdrop-blur-sm
-            rounded-lg shadow-md
-            px-2 py-1.5
-            z-[500]
-          "
-        >
-          <div className="text-[10px] font-semibold text-slate-700 mb-1">Daerah Prioritas DPT</div>
-          <div className="text-[8px] text-slate-500 mb-2">Berdasarkan kepadatan DPT/km²</div>
-          <div className="space-y-0.5 text-[9px] sm:text-[10px]">
-            {legend.map((item, idx) => (
-              <div key={idx} className="flex items-center gap-1.5">
+      {activeLegend && activeLegend.length > 0 && (
+        <div className="absolute bottom-3 left-3 bg-white/70 backdrop-blur-sm rounded-lg shadow-md px-3 py-2 z-[500]">
+          <div className="text-[12px] sm:text-xs font-semibold text-slate-700 mb-1">
+            Daerah Prioritas DPT
+          </div>
+          <div className="text-[11px] sm:text-[12px] text-slate-500 mb-2">
+            Berdasarkan kepadatan DPT/km²
+          </div>
+
+          <div className="space-y-1 text-[10px] sm:text-[11px]">
+            {activeLegend.map((item, idx) => (
+              <div key={idx} className="flex items-center gap-2">
                 <span
-                  className="w-3 h-3 rounded"
+                  className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded"
                   style={{ backgroundColor: item.color }}
                 />
-                <span>{item.label}</span>
+                <span className="leading-tight font-semibold">{item.label}</span>
               </div>
             ))}
           </div>
         </div>
       )}
-
     </div>
   );
 }

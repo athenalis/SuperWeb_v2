@@ -230,8 +230,8 @@ export default function KoordinatorApkRequestView({ requestId, onComplete, onBac
     const courier = order.courier;
     const histories = order.histories || [];
 
-    // Get rejection feedback from history
-    const rejectionHistory = histories.find((h) => h.status?.code === "REJECTED");
+    // Get rejection feedback from history (Find LAST status REJECTED)
+    const rejectionHistory = [...histories].reverse().find((h) => h.status?.code === "REJECTED");
     const rejectionMessage = rejectionHistory?.note || "";
 
     return (
@@ -287,6 +287,25 @@ export default function KoordinatorApkRequestView({ requestId, onComplete, onBac
                         <div className="mt-3 text-xs text-slate-500">Klik "Edit & Kirim Ulang" untuk merevisi dan mengajukan kembali.</div>
                     </SectionCard>
                 )}
+
+                <SectionCard title="Detail Request" icon="mdi:file-document-outline">
+                    <div className="flex flex-col gap-3">
+                        <div>
+                            <div className="text-xs font-bold text-slate-500 uppercase mb-1">Alamat Penjemputan / Pengiriman</div>
+                            <div className="text-sm text-slate-800 bg-slate-50 p-2 rounded border border-slate-100">
+                                {order.pickup_address || "-"}
+                            </div>
+                        </div>
+                        {order.description && (
+                            <div>
+                                <div className="text-xs font-bold text-slate-500 uppercase mb-1">Catatan / Keperluan</div>
+                                <div className="text-sm text-slate-800 bg-yellow-50 p-2 rounded border border-yellow-100 italic">
+                                    "{order.description}"
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </SectionCard>
 
                 {/* Items */}
                 <SectionCard title={`Daftar Barang (${items.length})`} icon="mdi:package-variant-closed">

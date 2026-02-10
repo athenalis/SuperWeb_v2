@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Helpers\PhoneHelper;
 use App\Http\Controllers\Controller;
 use App\Models\AdminApk;
 use App\Models\AdminPaslon;
@@ -88,6 +89,21 @@ class AdminApkController extends Controller
 
     public function store(Request $request)
     {
+        $rawNoHp = $request->input('no_hp');
+
+        $request->merge([
+            'no_hp' => PhoneHelper::normalize($rawNoHp),
+        ]);
+
+        if (!empty($rawNoHp) && $request->input('no_hp') === null) {
+            return response()->json([
+                'status' => false,
+                'errors' => [
+                    'no_hp' => [PhoneHelper::lastError() ?? 'Nomor HP tidak valid']
+                ]
+            ], 422);
+        }
+
         $validated = $request->validate([
             'nama' => 'required|string|max:255',
             'nik'  => 'required|digits_between:8,20',
@@ -168,13 +184,14 @@ class AdminApkController extends Controller
                     'name'     => $user->name,
                     'email'    => $user->email,
                     'nik'      => $user->nik,
-                    'password' => $plainPassword, 
+                    'password' => $plainPassword,
                     'role_id'  => $user->role_id,
                 ],
                 'admin_apk' => $adminApk
             ]
         ], 201);
     }
+
     public function update(Request $request, $id)
     {
         $adminPaslon = $this->currentAdminPaslon();
@@ -188,6 +205,21 @@ class AdminApkController extends Controller
                 'status' => false,
                 'message' => 'Admin APK tidak ditemukan'
             ], 404);
+        }
+
+        $rawNoHp = $request->input('no_hp');
+
+        $request->merge([
+            'no_hp' => PhoneHelper::normalize($rawNoHp),
+        ]);
+
+        if (!empty($rawNoHp) && $request->input('no_hp') === null) {
+            return response()->json([
+                'status' => false,
+                'errors' => [
+                    'no_hp' => [PhoneHelper::lastError() ?? 'Nomor HP tidak valid']
+                ]
+            ], 422);
         }
 
         $validated = $request->validate([
@@ -242,14 +274,13 @@ class AdminApkController extends Controller
                     $base = preg_replace('/[^a-z0-9]/', '', $base);
                     if ($base === '') $base = 'user';
 
-                    // email unik
                     do {
                         $rand = rand(1000, 9999);
                         $newEmail = $base . $rand . '@gmail.com';
                     } while (
                         User::where('email', $newEmail)
-                        ->where('id', '!=', $adminApk->user->id)
-                        ->exists()
+                            ->where('id', '!=', $adminApk->user->id)
+                            ->exists()
                     );
 
                     $newPasswordPlain = $base . rand(1000, 9999);
@@ -288,7 +319,7 @@ class AdminApkController extends Controller
                 'admin_apk' => $adminApk,
                 'user' => $nameChanged ? [
                     'email' => $newEmail,
-                    'password' => $newPasswordPlain, 
+                    'password' => $newPasswordPlain,
                 ] : null
             ]
         ]);

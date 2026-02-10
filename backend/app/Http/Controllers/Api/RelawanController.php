@@ -30,10 +30,6 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class RelawanController extends Controller
 {
-    /* =========================================================
-     * Helpers (ROLE + KOORDINATOR)
-     * ========================================================= */
-
     private function userRoleSlug($user): ?string
     {
         // prioritas role_id dulu (biar gak ketiban kolom users.role legacy)
@@ -79,8 +75,249 @@ class RelawanController extends Controller
 
     private function canDoubleJobFromKunjunganToApk(Relawan $relawan): bool
     {
-        // hanya boleh: relawan sudah kunjungan, belum apk
         return ((int)$relawan->is_kunjungan === 1) && ((int)$relawan->is_apk === 0);
+    }
+
+    public function doubleJobToApkFromKunjungan(Request $request, $id)
+    {
+        $actor    = Auth::user();
+        $roleSlug = $this->userRoleSlug($actor);
+
+        // hanya kunjungan_koordinator yang boleh melakukan
+        if ($roleSlug !== 'kunjungan_koordinator') {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Forbidden',
+            ], 403);
+        }
+
+        $koorKunjungan = $this->getKunjunganCoordinator($actor);
+        if (!$koorKunjungan) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Akun koordinator kunjungan tidak valid',
+            ], 403);
+        }
+
+        // koor_apk_id wajib (koordinator APK tujuan)
+        $validator = Validator::make($request->all(), [
+            'koor_apk_id' => ['required', 'integer'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $relawan = Relawan::find($id);
+        if (!$relawan) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Relawan tidak ditemukan',
+            ], 404);
+        }
+
+        // pastikan relawan milik kunjungan koordinator yg login
+        if ((int)$relawan->koor_kunjungan_id !== (int)$koorKunjungan->id) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Anda tidak berhak mengubah relawan ini',
+            ], 403);
+        }
+
+        // ✅ RULE UTAMA: hanya kunjungan-only -> apk
+        if (!$this->canDoubleJobFromKunjunganToApk($relawan)) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Relawan tidak eligible untuk double job. Hanya boleh dari Kunjungan (aktif) ke APK (belum).',
+            ], 422);
+        }
+
+        // ambil koordinator APK tujuan
+        $koorApk = DB::table('apk_koordinators')
+            ->where('id', (int)$request->koor_apk_id)
+            ->whereNull('deleted_at')
+            ->first();
+
+        if (!$koorApk) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Koordinator APK tujuan tidak ditemukan / tidak aktif',
+            ], 422);
+        }
+
+        // harus 1 paslon
+        if ((int)$koorApk->paslon_id !== (int)$relawan->paslon_id) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Koordinator APK tujuan tidak satu paslon dengan relawan',
+            ], 422);
+        }
+
+        // (opsional tapi recommended) kunci wilayah biar gak silang area
+        // sesuaikan kalau aturan kamu cukup city/district aja
+        if (
+            (string)$koorApk->province_code !== (string)$relawan->province_code ||
+            (string)$koorApk->city_code     !== (string)$relawan->city_code ||
+            (string)$koorApk->district_code !== (string)$relawan->district_code ||
+            (string)$koorApk->village_code  !== (string)$relawan->village_code
+        ) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Koordinator APK tujuan tidak satu wilayah dengan relawan',
+            ], 422);
+        }
+
+        $updated = DB::transaction(function () use ($relawan, $koorApk) {
+            $relawan->update([
+                'is_apk'     => 1,
+                'koor_apk_id'=> (int)$koorApk->id,
+            ]);
+
+            ActivityLogger::log([
+                'action'      => 'UPDATE',
+                'target_type' => 'relawan',
+                'target_name' => $relawan->nama,
+                'field'       => 'double_job',
+                'old_value'   => 'kunjungan_only',
+                'new_value'   => 'kunjungan+apk',
+                'meta'        => [
+                    'koor_apk_id' => (int)$koorApk->id,
+                ],
+            ]);
+
+            return $relawan->fresh();
+        });
+
+        return response()->json([
+            'status'  => true,
+            'message' => 'Relawan berhasil dijadikan double job (Kunjungan + APK)',
+            'data'    => [
+                'relawan' => $updated,
+            ],
+        ], 200);
+    }
+
+    public function eligibleApkKoordinatorsForRelawan(Request $request, $id)
+    {
+        $actor    = Auth::user();
+        $roleSlug = $this->userRoleSlug($actor);
+
+        // hanya kunjungan_koordinator yang boleh melihat kandidat koor APK
+        if ($roleSlug !== 'kunjungan_koordinator') {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Forbidden',
+            ], 403);
+        }
+
+        $koorKunjungan = $this->getKunjunganCoordinator($actor);
+        if (!$koorKunjungan) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Akun koordinator kunjungan tidak valid',
+            ], 403);
+        }
+
+        $relawan = Relawan::where('id', (int)$id)
+            ->whereNull('deleted_at')
+            ->first();
+
+        if (!$relawan) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Relawan tidak ditemukan',
+            ], 404);
+        }
+
+        // pastikan relawan milik koordinator kunjungan yg login
+        if ((int)$relawan->koor_kunjungan_id !== (int)$koorKunjungan->id) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Anda tidak berhak melihat relawan ini',
+            ], 403);
+        }
+
+        // hanya kunjungan-only yang eligible untuk jadi double job ke APK
+        if (!$this->canDoubleJobFromKunjunganToApk($relawan)) {
+            return response()->json([
+                'status'  => true,
+                'message' => 'Relawan tidak eligible untuk double job. Hanya boleh dari Kunjungan (aktif) ke APK (belum).',
+                'data'    => [],
+                'meta'    => [
+                    'relawan_id' => (int)$relawan->id,
+                    'paslon_id'  => (int)$relawan->paslon_id,
+                    'wilayah'    => [
+                        'province_code' => (string)$relawan->province_code,
+                        'city_code'     => (string)$relawan->city_code,
+                        'district_code' => (string)$relawan->district_code,
+                        'village_code'  => (string)$relawan->village_code,
+                    ],
+                ],
+            ], 200);
+        }
+
+        // cari kandidat koordinator APK yang:
+        // - aktif (deleted_at null)
+        // - paslon sama
+        // - wilayah sama (prov + kota + kec + kel)
+        $koors = DB::table('apk_koordinators')
+            ->select([
+                'id',
+                'user_id',
+                'nama',
+                'nik',
+                'no_hp',
+                'paslon_id',
+                'province_code',
+                'city_code',
+                'district_code',
+                'village_code',
+            ])
+            ->whereNull('deleted_at')
+            ->where('paslon_id', (int)$relawan->paslon_id)
+            ->where('province_code', (string)$relawan->province_code)
+            ->where('city_code', (string)$relawan->city_code)
+            ->where('district_code', (string)$relawan->district_code)
+            ->where('village_code', (string)$relawan->village_code)
+            ->orderByDesc('id')
+            ->get();
+
+        // kalau tidak ada kandidat, kasih message yang jelas
+        if ($koors->isEmpty()) {
+            return response()->json([
+                'status'  => true,
+                'message' => 'Tidak ada koordinator APK yang tersedia dengan paslon dan wilayah yang sama.',
+                'data'    => [],
+                'meta'    => [
+                    'relawan_id' => (int)$relawan->id,
+                    'paslon_id'  => (int)$relawan->paslon_id,
+                    'wilayah'    => [
+                        'province_code' => (string)$relawan->province_code,
+                        'city_code'     => (string)$relawan->city_code,
+                        'district_code' => (string)$relawan->district_code,
+                        'village_code'  => (string)$relawan->village_code,
+                    ],
+                ],
+            ], 200);
+        }
+
+        return response()->json([
+            'status' => true,
+            'data'   => $koors,
+            'meta'   => [
+                'relawan_id' => (int)$relawan->id,
+                'paslon_id'  => (int)$relawan->paslon_id,
+                'wilayah'    => [
+                    'province_code' => (string)$relawan->province_code,
+                    'city_code'     => (string)$relawan->city_code,
+                    'district_code' => (string)$relawan->district_code,
+                    'village_code'  => (string)$relawan->village_code,
+                ],
+            ],
+        ], 200);
     }
 
     /* =========================================================
@@ -176,6 +413,8 @@ class RelawanController extends Controller
         $query = $this->baseQueryRelawan();
         $paslonId = null;
 
+        $koor = null; // ✅ tambahin ini
+
         if ($isAdminPaslon) {
             $adminPaslon = AdminPaslon::query()
                 ->where('user_id', $actor->id)
@@ -197,7 +436,7 @@ class RelawanController extends Controller
         }
 
         if ($isApkKoor) {
-            $koor = $this->getApkCoordinator($actor);
+            $koor = $this->getApkCoordinator($actor); // ✅ simpen koor
             if (!$koor) {
                 return response()->json([
                     'status'  => false,
@@ -206,7 +445,7 @@ class RelawanController extends Controller
             }
 
             $paslonId = (int) ($koor->paslon_id ?? 0);
-            $query->where('koor_apk_id', (int)$koor->id);
+            $query->where('koor_apk_id', (int) $koor->id);
         }
 
         if ($isAdminApk) {
@@ -237,7 +476,25 @@ class RelawanController extends Controller
 
         $this->applySearchAndFilters($request, $query);
 
-        return $this->finalizeList($request, $query);
+        if ($request->filled('per_page')) {
+            $perPage = max(1, (int) $request->per_page);
+            $data = $query->orderByDesc('id')->paginate($perPage);
+
+            $data->getCollection()->each(function ($item) {
+                $item->makeHidden(['tps']);
+            });
+        } else {
+            $data = $query->orderByDesc('id')->get();
+
+            $data->each(function ($item) {
+                $item->makeHidden(['tps']);
+            });
+        }
+
+        return response()->json([
+            'status' => true,
+            'data'   => $data
+        ]);
     }
 
     public function indexKunjungan(Request $request)
@@ -389,25 +646,50 @@ class RelawanController extends Controller
             return response()->json(['status' => false, 'message' => 'Forbidden'], 403);
         }
 
-        $relawan = $this->baseShowRelawan($id);
+        $relawan = Relawan::with([
+            'province:province_code,province',
+            'city:city_code,city',
+            'district:district_code,district',
+            'village:village_code,village',
+            'ormas',
+            'user' => fn($q) => $q->withTrashed(),
 
-        if (!$relawan || (int)$relawan->is_apk !== 1) {
+            // ✅ load koordinator + user koordinator (buat nama koor)
+            'koordinatorApk' => fn($q) => $q->with(['user' => fn($qq) => $qq->withTrashed()]),
+        ])->find($id);
+
+        if (!$relawan || (int) $relawan->is_apk !== 1) {
             return response()->json(['status' => false, 'message' => 'Relawan tidak ditemukan'], 404);
         }
 
+        // resolve paslon for actor
         $paslonId = $this->resolvePaslonIdForActor($actor, $roleSlug);
-        if (!$paslonId || (int)$relawan->paslon_id !== (int)$paslonId) {
+        if (!$paslonId || (int) $relawan->paslon_id !== (int) $paslonId) {
             return response()->json(['status' => false, 'message' => 'Anda tidak berhak melihat relawan ini'], 403);
         }
 
         if ($roleSlug === 'apk_koordinator') {
             $koor = $this->getApkCoordinator($actor);
-            if (!$koor || (int)$relawan->koor_apk_id !== (int)$koor->id) {
+            if (!$koor || (int) $relawan->koor_apk_id !== (int) $koor->id) {
                 return response()->json(['status' => false, 'message' => 'Anda tidak berhak melihat relawan ini'], 403);
             }
         }
 
-        return response()->json(['status' => true, 'data' => $relawan], 200);
+        // ✅ hide TPS khusus endpoint APK
+        $relawan->makeHidden(['tps']);
+
+        // ✅ ambil nama koordinator dari relasi
+        $koorName = $relawan->koordinatorApk?->user?->name;
+
+        return response()->json([
+            'status' => true,
+            'data'   => $relawan,
+            'koor'   => [
+                'type' => 'apk',
+                'id'   => $relawan->koor_apk_id,
+                'name' => $koorName,
+            ],
+        ], 200);
     }
 
     public function showKunjungan($id)
@@ -419,29 +701,49 @@ class RelawanController extends Controller
             return response()->json(['status' => false, 'message' => 'Forbidden'], 403);
         }
 
-        $relawan = $this->baseShowRelawan($id);
+        $relawan = Relawan::with([
+            'province:province_code,province',
+            'city:city_code,city',
+            'district:district_code,district',
+            'village:village_code,village',
+            'ormas',
+            'user' => fn($q) => $q->withTrashed(),
 
-        if (!$relawan || (int)$relawan->is_kunjungan !== 1) {
+            // ✅ load koordinator + user koordinator (buat nama koor)
+            'koordinatorKunjungan' => fn($q) => $q->with(['user' => fn($qq) => $qq->withTrashed()]),
+        ])->find($id);
+
+        if (!$relawan || (int) $relawan->is_kunjungan !== 1) {
             return response()->json(['status' => false, 'message' => 'Relawan tidak ditemukan'], 404);
         }
 
         $paslonId = $this->resolvePaslonIdForActor($actor, $roleSlug);
-        if (!$paslonId || (int)$relawan->paslon_id !== (int)$paslonId) {
+        if (!$paslonId || (int) $relawan->paslon_id !== (int) $paslonId) {
             return response()->json(['status' => false, 'message' => 'Anda tidak berhak melihat relawan ini'], 403);
         }
 
         if ($roleSlug === 'kunjungan_koordinator') {
             $koor = $this->getKunjunganCoordinator($actor);
-            if (!$koor || (int)$relawan->koor_kunjungan_id !== (int)$koor->id) {
+            if (!$koor || (int) $relawan->koor_kunjungan_id !== (int) $koor->id) {
                 return response()->json(['status' => false, 'message' => 'Anda tidak berhak melihat relawan ini'], 403);
             }
         }
 
-        return response()->json(['status' => true, 'data' => $relawan], 200);
+        $koorName = $relawan->koordinatorKunjungan?->user?->name;
+
+        return response()->json([
+            'status' => true,
+            'data'   => $relawan,
+            'koor'   => [
+                'type' => 'kunjungan',
+                'id'   => $relawan->koor_kunjungan_id,
+                'name' => $koorName,
+            ],
+        ], 200);
     }
 
     /* =========================================================
-     * STORE / UPDATE / DESTROY
+     * STORE / UPDATE /  Y
      * (ini kamu punya sudah oke, aku biarin, hanya pastikan show() lama tidak dipakai)
      * ========================================================= */
 
@@ -484,17 +786,20 @@ class RelawanController extends Controller
             }
         }
 
+        // ✅ normalize hp + TPS conditional (APK => null walau dikirim)
         $request->merge([
             'no_hp' => PhoneHelper::normalize($request->no_hp),
-            'tps'   => $this->normalizeTps($request->tps)
+            'tps'   => $isKunjunganActor ? $this->normalizeTps($request->tps) : null,
         ]);
 
+        // untuk kasus Kunjungan koordinator bisa “centang is_apk”
         $requestedIsApk = (int) $request->input('is_apk', 0);
 
         $is_kunjungan = $isKunjunganActor ? 1 : 0;
         $is_apk       = $isApkActor ? 1 : ($isKunjunganActor ? ($requestedIsApk ? 1 : 0) : 0);
 
-        if ($isApkActor && (int)$request->input('is_kunjungan', 0) === 1) {
+        // kalau actor APK, gak boleh bikin kunjungan
+        if ($isApkActor && (int) $request->input('is_kunjungan', 0) === 1) {
             return response()->json([
                 'status' => false,
                 'message' => 'Relawan APK tidak boleh ditugaskan menjadi relawan kunjungan'
@@ -514,10 +819,16 @@ class RelawanController extends Controller
                 'required',
                 'digits:16',
                 function ($attribute, $value, $fail) {
-                    $existsRelawanAktif = Relawan::where('nik', $value)->exists();
-                    $existsKoorKunjungan = CoordinatorVisit::where('nik', $value)->exists();
+                    $existsRelawanAktif   = Relawan::where('nik', $value)->exists();
+                    $existsKoorKunjungan  = CoordinatorVisit::where('nik', $value)->exists();
 
-                    if ($existsRelawanAktif || $existsKoorKunjungan) {
+                    // kalau ada table koor apk juga bisa ditambah blok (opsional)
+                    $existsKoorApk = DB::table('apk_koordinators')
+                        ->where('nik', $value)
+                        ->whereNull('deleted_at')
+                        ->exists();
+
+                    if ($existsRelawanAktif || $existsKoorKunjungan || $existsKoorApk) {
                         $fail('NIK sudah terdaftar sebagai relawan atau koordinator');
                     }
                 }
@@ -530,7 +841,10 @@ class RelawanController extends Controller
                 }
             ],
             'alamat' => 'required|string|max:255',
-            'tps' => 'required|string|max:3',
+
+            // ✅ kunjungan wajib TPS, APK nullable (dan nanti disimpan null)
+            'tps' => $isKunjunganActor ? 'required|string|max:3' : 'nullable|string|max:3',
+
             'ormas_id' => 'nullable|exists:ormas,id',
             'is_apk' => 'sometimes|in:0,1',
         ], ['nama.regex' => 'Nama tidak boleh mengandung angka']);
@@ -539,7 +853,15 @@ class RelawanController extends Controller
             return response()->json(['status' => false, 'errors' => $validator->errors()], 422);
         }
 
-        $result = DB::transaction(function () use ($request, $isKunjunganActor, $isApkActor, $koorKunjungan, $koorApk, $is_kunjungan, $is_apk) {
+        $result = DB::transaction(function () use (
+            $request,
+            $isKunjunganActor,
+            $isApkActor,
+            $koorKunjungan,
+            $koorApk,
+            $is_kunjungan,
+            $is_apk
+        ) {
 
             $prov = $isKunjunganActor ? $koorKunjungan->province_code : $koorApk->province_code;
             $city = $isKunjunganActor ? $koorKunjungan->city_code     : $koorApk->city_code;
@@ -589,7 +911,10 @@ class RelawanController extends Controller
                 'nik'    => $request->nik,
                 'no_hp'  => $request->no_hp,
                 'alamat' => $request->alamat,
-                'tps'    => $request->tps,
+
+                // ✅ kunci: APK-only => null walau FE kirim tps
+                'tps'    => $isKunjunganActor ? $request->tps : null,
+
                 'ormas_id' => $request->ormas_id,
 
                 'is_kunjungan' => $is_kunjungan,
@@ -633,24 +958,322 @@ class RelawanController extends Controller
 
     public function update(Request $request, $id)
     {
-        // (punya kamu udah panjang & oke, aku biarin sama persis)
-        // kalau mau aku full rapihin juga, bilang aja—nanti aku rewrite versi clean.
+        $actor = Auth::user();
+        $roleSlug = $this->userRoleSlug($actor);
+
+        $isKunjunganActor = $roleSlug === 'kunjungan_koordinator';
+        $isApkActor       = $roleSlug === 'apk_koordinator';
+
+        if (!$isKunjunganActor && !$isApkActor) {
+            return response()->json(['status' => false, 'message' => 'Hanya koordinator yang dapat mengubah relawan'], 403);
+        }
+
+        $relawan = Relawan::with(['user'])->find($id);
+        if (!$relawan) {
+            return response()->json(['status' => false, 'message' => 'Relawan tidak ditemukan'], 404);
+        }
+
+        // authz: pastikan relawan milik koordinator yg login
+        if ($isKunjunganActor) {
+            $koor = $this->getKunjunganCoordinator($actor);
+            if (!$koor || (int)$relawan->koor_kunjungan_id !== (int)$koor->id) {
+                return response()->json(['status' => false, 'message' => 'Anda tidak berhak mengubah relawan ini'], 403);
+            }
+        }
+
+        if ($isApkActor) {
+            $koor = $this->getApkCoordinator($actor);
+            if (!$koor || (int)$relawan->koor_apk_id !== (int)$koor->id) {
+                return response()->json(['status' => false, 'message' => 'Anda tidak berhak mengubah relawan ini'], 403);
+            }
+        }
+
+        // ✅ normalize hp + TPS conditional
+        $request->merge([
+            'no_hp' => PhoneHelper::normalize($request->no_hp),
+            'tps'   => $isKunjunganActor ? $this->normalizeTps($request->tps) : null,
+        ]);
+
+        $validator = Validator::make($request->all(), [
+            'nama' => ['required', 'string', 'max:255', 'regex:/^[^0-9]+$/'],
+            'nik'  => [
+                'required',
+                'digits:16',
+                function ($attribute, $value, $fail) use ($relawan) {
+                    $existsRelawan = Relawan::where('nik', $value)->where('id', '!=', $relawan->id)->exists();
+                    $existsKoorKunjungan = CoordinatorVisit::where('nik', $value)->exists();
+                    $existsKoorApk = DB::table('apk_koordinators')
+                        ->where('nik', $value)
+                        ->whereNull('deleted_at')
+                        ->exists();
+
+                    if ($existsRelawan || $existsKoorKunjungan || $existsKoorApk) {
+                        $fail('NIK sudah terdaftar sebagai relawan atau koordinator');
+                    }
+                }
+            ],
+            'no_hp' => [
+                'required',
+                'digits_between:10,13',
+                function ($attribute, $value, $fail) {
+                    if (str_starts_with($value, '021')) $fail('Nomor telepon rumah (021) tidak diperbolehkan');
+                }
+            ],
+            'alamat' => 'required|string|max:255',
+
+            // ✅ kunjungan wajib TPS, APK nullable (dan nanti disimpan null)
+            'tps' => $isKunjunganActor ? 'required|string|max:3' : 'nullable|string|max:3',
+
+            'ormas_id' => 'nullable|exists:ormas,id',
+            'is_apk' => 'sometimes|in:0,1',
+        ], ['nama.regex' => 'Nama tidak boleh mengandung angka']);
+
+        if ($validator->fails()) {
+            return response()->json(['status' => false, 'errors' => $validator->errors()], 422);
+        }
+
+        $result = DB::transaction(function () use ($request, $relawan, $actor, $isKunjunganActor, $isApkActor) {
+
+            $oldData = $relawan->only(['nama', 'nik', 'no_hp', 'alamat', 'tps', 'ormas_id', 'is_kunjungan', 'is_apk']);
+
+            // rules tugas:
+            $newIsKunjungan = $isKunjunganActor ? 1 : 0;
+
+            // kalau actor APK: dia pasti set apk=1
+            // kalau actor Kunjungan: boleh set is_apk sesuai request
+            $newIsApk = $isApkActor ? 1 : (int)$request->input('is_apk', (int)$relawan->is_apk);
+
+            if ($isApkActor && $newIsKunjungan === 1) {
+                return ['blocked' => true, 'message' => 'Relawan APK tidak boleh ditugaskan menjadi relawan kunjungan'];
+            }
+
+            if ($newIsKunjungan === 0 && $newIsApk === 0) {
+                return ['blocked' => true, 'message' => 'Relawan harus memiliki minimal salah satu tugas (kunjungan atau apk)'];
+            }
+
+            // wilayah ikut koordinator yang update
+            if ($isKunjunganActor) {
+                $koor = $this->getKunjunganCoordinator($actor);
+                $prov = $koor->province_code;
+                $city = $koor->city_code;
+                $dist = $koor->district_code;
+                $vill = $koor->village_code;
+            } else {
+                $koor = $this->getApkCoordinator($actor);
+                $prov = $koor->province_code;
+                $city = $koor->city_code;
+                $dist = $koor->district_code;
+                $vill = $koor->village_code;
+            }
+
+            $nameChanged = ($oldData['nama'] ?? null) !== $request->nama;
+
+            $relawan->update([
+                'nama'   => $request->nama,
+                'nik'    => $request->nik,
+                'no_hp'  => $request->no_hp,
+                'alamat' => $request->alamat,
+
+                // ✅ kunci: APK update => tps null (tidak akan kesimpen)
+                'tps'    => $isKunjunganActor ? $request->tps : null,
+
+                'ormas_id' => $request->ormas_id,
+
+                'province_code' => $prov,
+                'city_code'     => $city,
+                'district_code' => $dist,
+                'village_code'  => $vill,
+
+                'is_kunjungan' => $newIsKunjungan,
+                'is_apk'       => $newIsApk,
+            ]);
+
+            $newEmail = null;
+            $newPasswordPlain = null;
+
+            if ($relawan->user) {
+                $userUpdate = [
+                    'name' => $request->nama,
+                    'nik'  => $request->nik,
+                    'role_id' => $this->roleId('relawan'),
+                ];
+
+                if ($nameChanged) {
+                    $nameClean = strtolower(preg_replace('/\s+/', '', trim($request->nama)));
+                    $newEmail = $nameClean . rand(1000, 9999) . '@gmail.com';
+                    $newPasswordPlain = $nameClean . rand(1000, 9999);
+
+                    if (User::where('email', $newEmail)->where('id', '!=', $relawan->user->id)->exists()) {
+                        $newEmail = $nameClean . rand(10000, 99999) . '@gmail.com';
+                    }
+
+                    $userUpdate['email'] = $newEmail;
+                    $userUpdate['password'] = Hash::make($newPasswordPlain);
+
+                    UserCredential::where('user_id', $relawan->user->id)->update(['is_active' => false]);
+
+                    UserCredential::create([
+                        'user_id'            => $relawan->user->id,
+                        'encrypted_password' => Crypt::encryptString($newPasswordPlain),
+                        'type'               => 'reactive',
+                        'is_active'          => true,
+                    ]);
+                }
+
+                $relawan->user->update($userUpdate);
+            }
+
+            foreach ($oldData as $field => $oldValue) {
+                $newValue = $relawan->$field;
+                if ((string)$oldValue !== (string)$newValue) {
+                    ActivityLogger::log([
+                        'action'      => 'UPDATE',
+                        'target_type' => 'relawan',
+                        'target_name' => $relawan->nama,
+                        'field'       => $field,
+                        'old_value'   => $oldValue,
+                        'new_value'   => $newValue,
+                    ]);
+                }
+            }
+
+            return [
+                'blocked' => false,
+                'relawan' => $relawan->fresh()->load('ormas'),
+                'name_changed' => $nameChanged,
+                'email' => $newEmail,
+                'password' => $newPasswordPlain,
+            ];
+        });
+
+        if (!empty($result['blocked'])) {
+            return response()->json(['status' => false, 'message' => $result['message']], 422);
+        }
+
+        $userPayload = null;
+        if (!empty($result['name_changed'])) {
+            $userPayload = ['email' => $result['email'], 'password' => $result['password']];
+        }
 
         return response()->json([
-            'status' => false,
-            'message' => 'Update: pakai kode kamu yang sudah ada (tidak aku ubah di paste ini).'
-        ], 501);
+            'status'  => true,
+            'message' => 'Relawan berhasil diperbarui',
+            'data'    => [
+                'relawan' => $result['relawan'],
+                'user'    => $userPayload,
+            ]
+        ]);
     }
 
     public function destroy($id)
     {
-        // (punya kamu udah oke, aku biarin)
+        $user = Auth::user();
+        $roleSlug = $this->userRoleSlug($user);
+
+        $relawan = Relawan::with([
+            'village',
+            'district',
+            'city',
+            'koordinatorKunjungan',
+            'koordinatorApk',
+            'user'
+        ])->find($id);
+
+        if (!$relawan) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Relawan tidak ditemukan'
+            ], 404);
+        }
+
+        if (!in_array($roleSlug, ['kunjungan_koordinator', 'apk_koordinator'], true)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Anda tidak memiliki akses menghapus relawan'
+            ], 403);
+        }
+
+        if ($roleSlug === 'kunjungan_koordinator') {
+
+            if ((int) $relawan->is_kunjungan !== 1) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Relawan ini bukan relawan kunjungan'
+                ], 403);
+            }
+
+            $koor = $this->getKunjunganCoordinator($user);
+
+            if (
+                !$koor ||
+                (int) $relawan->koor_kunjungan_id !== (int) $koor->id
+            ) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Anda tidak berhak menghapus relawan ini'
+                ], 403);
+            }
+        }
+
+        if ($roleSlug === 'apk_koordinator') {
+
+            if ((int) $relawan->is_apk !== 1) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Relawan ini bukan relawan APK'
+                ], 403);
+            }
+
+            $koor = $this->getApkCoordinator($user);
+
+            if (
+                !$koor ||
+                (int) $relawan->koor_apk_id !== (int) $koor->id
+            ) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Anda tidak berhak menghapus relawan ini'
+                ], 403);
+            }
+        }
+
+        $visitCount = VisitForm::where('relawan_id', $relawan->id)->count();
+
+        if ($visitCount > 0) {
+            return response()->json([
+                'status' => false,
+                'message' => "Relawan ini masih mempunyai {$visitCount} data kunjungan"
+            ], 422);
+        }
+
+        $nama = $relawan->nama;
+        $wilayah = [
+            'kelurahan' => $relawan->village->village ?? null,
+            'kecamatan' => $relawan->district->district ?? null,
+            'kota'      => $relawan->city->city ?? null,
+        ];
+
+        ActivityLogger::log([
+            'action'      => 'DELETE',
+            'target_type' => 'relawan',
+            'target_name' => $nama,
+            'meta'        => $wilayah,
+        ]);
+
+        DB::transaction(function () use ($relawan) {
+            $relawan->delete();
+
+            if ($relawan->user) {
+                $relawan->user->delete();
+            }
+        });
+
         return response()->json([
-            'status' => false,
-            'message' => 'Destroy: pakai kode kamu yang sudah ada (tidak aku ubah di paste ini).'
-        ], 501);
+            'status'  => true,
+            'message' => 'Relawan berhasil dihapus'
+        ]);
     }
-    
+
     public function exportKunjungan(Request $request)
     {
         $actor = Auth::user();
@@ -827,98 +1450,6 @@ class RelawanController extends Controller
         return $response;
     }
 
-    // public function import(Request $request)
-    // {
-    //     $actor = Auth::user();
-    //     $roleSlug = $this->userRoleSlug($actor);
-
-    //     $isKunjunganActor = $roleSlug === 'kunjungan_koordinator';
-    //     $isApkActor       = $roleSlug === 'apk_koordinator';
-
-    //     if (!$isKunjunganActor && !$isApkActor) {
-    //         return response()->json([
-    //             'status' => false,
-    //             'message' => 'Hanya koordinator (kunjungan/apk) yang dapat mengimpor relawan'
-    //         ], 403);
-    //     }
-
-    //     $validator = Validator::make($request->all(), [
-    //         'file' => 'required|file|mimes:xls,xlsx|max:5120',
-    //     ]);
-
-    //     if ($validator->fails()) {
-    //         return response()->json([
-    //             'status' => false,
-    //             'message' => 'File tidak valid',
-    //             'errors' => $validator->errors(),
-    //         ], 422);
-    //     }
-
-    //     // Ambil koordinator sesuai role
-    //     $koorKunjungan = $isKunjunganActor ? $this->getKunjunganCoordinator($actor) : null;
-    //     $koorApk       = $isApkActor ? $this->getApkCoordinator($actor) : null;
-
-    //     if ($isKunjunganActor && !$koorKunjungan) {
-    //         return response()->json([
-    //             'status' => false,
-    //             'message' => 'Akun koordinator kunjungan tidak valid'
-    //         ], 403);
-    //     }
-
-    //     if ($isApkActor && !$koorApk) {
-    //         return response()->json([
-    //             'status' => false,
-    //             'message' => 'Akun koordinator apk tidak valid'
-    //         ], 403);
-    //     }
-
-    //     /**
-    //      * Tentukan import class:
-    //      * - RelawanKunjunganImport: is_kunjungan=1 (dan is_apk optional dari excel kalau kamu dukung)
-    //      * - RelawanApkImport: is_apk=1
-    //      */
-    //     $import = $isKunjunganActor
-    //         ? new RelawanKunjunganImport((int)$koorKunjungan->id)
-    //         : new RelawanApkImport((int)$koorApk->id);
-
-    //     try {
-    //         Excel::import($import, $request->file('file'));
-
-    //         ActivityLogger::log([
-    //             'action'      => 'IMPORT',
-    //             'target_type' => 'relawan',
-    //             'meta' => [
-    //                 'role' => $roleSlug,
-    //                 'koordinator_id' => $isKunjunganActor ? (int)$koorKunjungan->id : (int)$koorApk->id,
-    //                 'jumlah_data' => $import->successCount,
-    //                 'failed_count' => count($import->failedRows),
-    //             ]
-    //         ]);
-
-    //         return response()->json([
-    //             'status' => true,
-    //             'message' => 'Import relawan selesai',
-    //             'data' => [
-    //                 'success_count'    => $import->successCount,
-    //                 'failed_count'     => count($import->failedRows),
-    //                 'failed_rows'      => $import->failedRows,
-    //                 'created_accounts' => $import->createdAccounts,
-
-    //                 // OPTIONAL: kalau import class kamu punya property ini
-    //                 'updated_double_job' => property_exists($import, 'updatedDoubleJobCount')
-    //                     ? (int)$import->updatedDoubleJobCount
-    //                     : 0,
-    //             ]
-    //         ]);
-    //     } catch (\Throwable $e) {
-    //         return response()->json([
-    //             'status' => false,
-    //             'message' => 'Gagal import relawan',
-    //             'error' => $e->getMessage()
-    //         ], 500);
-    //     }
-    // }
-
     public function checkNik(Request $request)
     {
         $request->validate([
@@ -1035,18 +1566,6 @@ class RelawanController extends Controller
 
     public function restoreByNik(Request $request)
     {
-        $request->validate([
-            'nik' => 'required|digits:16',
-            'nama' => 'sometimes|required|string|max:255|regex:/^[^0-9]+$/',
-            'no_hp' => 'sometimes|required|digits_between:10,13',
-            'alamat' => 'sometimes|required|string|max:255',
-            'tps' => 'sometimes|required|string|max:3',
-            'ormas_id' => 'sometimes|nullable|exists:ormas,id',
-            'is_apk' => 'sometimes|in:0,1',
-        ], [
-            'nama.regex' => 'Nama tidak boleh mengandung angka'
-        ]);
-
         $actor = Auth::user();
         $roleSlug = $this->userRoleSlug($actor);
 
@@ -1060,6 +1579,28 @@ class RelawanController extends Controller
             ], 403);
         }
 
+        // ✅ rules conditional butuh role dulu (makanya diletakkin di sini)
+        $validator = Validator::make($request->all(), [
+            'nik'   => 'required|digits:16',
+            'nama'  => 'sometimes|required|string|max:255|regex:/^[^0-9]+$/',
+            'no_hp' => 'sometimes|required|digits_between:10,13',
+            'alamat' => 'sometimes|required|string|max:255',
+
+            // ✅ kunjungan butuh TPS (kalau FE ngirim), APK selalu boleh kosong
+            'tps'   => $isKunjunganActor
+                ? 'sometimes|required|string|max:3'
+                : 'nullable|string|max:3',
+
+            'ormas_id' => 'sometimes|nullable|exists:ormas,id',
+            'is_apk'   => 'sometimes|in:0,1',
+        ], [
+            'nama.regex' => 'Nama tidak boleh mengandung angka'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['status' => false, 'errors' => $validator->errors()], 422);
+        }
+
         $koorKunjungan = $isKunjunganActor ? $this->getKunjunganCoordinator($actor) : null;
         $koorApk       = $isApkActor ? $this->getApkCoordinator($actor) : null;
 
@@ -1070,6 +1611,7 @@ class RelawanController extends Controller
             return response()->json(['status' => false, 'message' => 'Akun koordinator apk tidak valid'], 403);
         }
 
+        // blok jika NIK dipakai koordinator kunjungan/apk aktif
         $existsKoorKunjungan = CoordinatorVisit::where('nik', $request->nik)
             ->whereNull('deleted_at')->exists();
 
@@ -1103,16 +1645,26 @@ class RelawanController extends Controller
             ], 422);
         }
 
+        // normalize no_hp (TPS jangan di-overwrite dulu)
         if ($request->filled('no_hp')) {
             $request->merge(['no_hp' => PhoneHelper::normalize($request->no_hp)]);
         }
 
-        if ($request->filled('tps')) {
-            $request->merge(['tps' => $this->normalizeTps($request->tps)]);
+        // ✅ FIX TPS:
+        // - Jangan merge tps jadi null kalau FE tidak kirim.
+        // - TPS final akan diputuskan setelah relawan ditemukan (pakai fallback relawan lama).
+        if ($isApkActor) {
+            // restore via APK: tps harus null
+            $request->merge(['tps' => null]);
+        } else {
+            // kunjungan: hanya normalize kalau FE memang mengirim tps
+            if ($request->has('tps')) {
+                $request->merge(['tps' => $this->normalizeTps($request->tps)]);
+            }
         }
 
         $finalIsKunjungan = $isKunjunganActor ? 1 : 0;
-        $finalIsApk = $isApkActor ? 1 : (int) $request->input('is_apk', (int) $relawan->is_apk);
+        $finalIsApk       = $isApkActor ? 1 : (int) $request->input('is_apk', (int) $relawan->is_apk);
 
         if ($finalIsKunjungan === 0 && $finalIsApk === 0) {
             return response()->json([
@@ -1136,8 +1688,17 @@ class RelawanController extends Controller
             }
         }
 
-        $result = DB::transaction(function () use ($request, $relawan, $isKunjunganActor, $isApkActor, $koorKunjungan, $koorApk, $finalIsKunjungan, $finalIsApk) {
-
+        $result = DB::transaction(function () use (
+            $request,
+            $relawan,
+            $isKunjunganActor,
+            $isApkActor,
+            $koorKunjungan,
+            $koorApk,
+            $finalIsKunjungan,
+            $finalIsApk
+        ) {
+            // ====== RESTORE DATA LAMA (TETAP) ======
             $relawan->restore();
 
             if ($relawan->user && $relawan->user->trashed()) {
@@ -1151,6 +1712,22 @@ class RelawanController extends Controller
 
             $paslonId = $isKunjunganActor ? ($koorKunjungan->paslon_id ?? null) : ($koorApk->paslon_id ?? null);
 
+            $finalNama = $request->input('nama', $relawan->nama);
+
+            // ✅ FIX TPS:
+            // KUNJUNGAN restore harus mempertahankan TPS lama kalau FE tidak kirim.
+            // Lalu normalize hasil akhirnya biar pasti 3 digit.
+            $finalTps = null;
+            if ($isKunjunganActor) {
+                $candidate = $request->has('tps')
+                    ? $request->input('tps')         // sudah dinormalize di atas
+                    : $relawan->tps;                 // fallback TPS lama
+
+                $finalTps = $this->normalizeTps($candidate);
+            } else {
+                $finalTps = null; // restore via APK tetap null
+            }
+
             $relawan->update([
                 'paslon_id' => $paslonId,
 
@@ -1162,10 +1739,13 @@ class RelawanController extends Controller
                 'district_code' => $dist,
                 'village_code'  => $vill,
 
-                'nama'   => $request->input('nama', $relawan->nama),
-                'no_hp'  => $request->input('no_hp', $relawan->no_hp),
-                'alamat' => $request->input('alamat', $relawan->alamat),
-                'tps'    => $request->input('tps', $relawan->tps),
+                'nama'     => $finalNama,
+                'no_hp'    => $request->input('no_hp', $relawan->no_hp),
+                'alamat'   => $request->input('alamat', $relawan->alamat),
+
+                // ✅ FIX TPS apply
+                'tps'      => $finalTps,
+
                 'ormas_id' => $request->has('ormas_id') ? $request->ormas_id : $relawan->ormas_id,
 
                 'is_kunjungan' => $finalIsKunjungan,
@@ -1173,28 +1753,44 @@ class RelawanController extends Controller
                 'status'       => 'inactive',
             ]);
 
-            $nameClean = strtolower(preg_replace('/\s+/', '', trim($relawan->nama)));
+            // ====== ✅ TAMBAHAN: GENERATE AKUN + PASSWORD BARU & KIRIM KE FE (TETAP) ======
+            $nameClean = strtolower(preg_replace('/\s+/', '', trim($finalNama)));
             $newEmail = $nameClean . rand(1000, 9999) . '@gmail.com';
-            $newPasswordPlain = $nameClean . rand(1000, 9999);
-
             if (User::where('email', $newEmail)->where('id', '!=', optional($relawan->user)->id)->exists()) {
                 $newEmail = $nameClean . rand(10000, 99999) . '@gmail.com';
             }
 
-            if ($relawan->user) {
-                $roleRelawanId = $this->roleId('relawan');
+            $newPasswordPlain = $nameClean . rand(1000, 9999);
 
-                $relawan->user->update([
-                    'name'     => $relawan->nama,
+            $roleRelawanId = $this->roleId('relawan');
+
+            if (!$relawan->user) {
+                $userRelawan = User::create([
+                    'name'     => $finalNama,
                     'nik'      => $relawan->nik,
                     'email'    => $newEmail,
                     'password' => Hash::make($newPasswordPlain),
                     'role_id'  => $roleRelawanId,
-                    'status'   => 'inactive',
                 ]);
 
-                UserCredential::where('user_id', $relawan->user->id)
-                    ->update(['is_active' => false]);
+                $relawan->update(['user_id' => $userRelawan->id]);
+
+                UserCredential::create([
+                    'user_id'            => $userRelawan->id,
+                    'encrypted_password' => Crypt::encryptString($newPasswordPlain),
+                    'type'               => 'reactive',
+                    'is_active'          => true,
+                ]);
+            } else {
+                $relawan->user->update([
+                    'name'     => $finalNama,
+                    'nik'      => $relawan->nik,
+                    'email'    => $newEmail,
+                    'password' => Hash::make($newPasswordPlain),
+                    'role_id'  => $roleRelawanId,
+                ]);
+
+                UserCredential::where('user_id', $relawan->user->id)->update(['is_active' => false]);
 
                 UserCredential::create([
                     'user_id'            => $relawan->user->id,
@@ -1214,9 +1810,12 @@ class RelawanController extends Controller
             ]);
 
             return [
+                // ✅ important: relawan yang direturn sudah berisi TPS final
                 'relawan'  => $relawan->fresh(['user', 'province', 'city', 'district', 'village']),
-                'email'    => $newEmail,
-                'password' => $newPasswordPlain,
+                'user'     => [
+                    'email'    => $newEmail,
+                    'password' => $newPasswordPlain,
+                ],
             ];
         });
 
@@ -1224,11 +1823,8 @@ class RelawanController extends Controller
             'status'  => true,
             'message' => "Relawan {$result['relawan']->nama} berhasil diaktifkan kembali",
             'data'    => [
-                'relawan' => $result['relawan'],
-                'user'    => [
-                    'email'    => $result['email'],
-                    'password' => $result['password'],
-                ],
+                'relawan' => $result['relawan'], // ✅ FE akan terima tps di sini kalau kunjungan
+                'user'    => $result['user'],
             ]
         ]);
     }

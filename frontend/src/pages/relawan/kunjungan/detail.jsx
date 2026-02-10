@@ -85,6 +85,7 @@ export default function RelawanDetail() {
   const { id } = useParams();
 
   const [data, setData] = useState(null);
+  const [koor, setKoor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [ormasList, setOrmasList] = useState([]);
@@ -97,9 +98,14 @@ export default function RelawanDetail() {
 
   // GET DATA DETAIL
   useEffect(() => {
+    setLoading(true);
     setNotFound(false);
-    api.get(`/relawan/${id}`)
-      .then(res => setData(res.data.data))
+
+    api.get(`/relawan/kunjungan/${id}`)
+      .then((res) => {
+        setData(res.data.data);
+        setKoor(res.data.koor);
+      })
       .catch((err) => {
         if (err.response?.status === 404) {
           setNotFound(true);
@@ -148,12 +154,12 @@ export default function RelawanDetail() {
               {data.nama}
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">Detail Profil Relawan</p>
-          </div>  
+          </div>
 
           <div className="flex items-center gap-2 sm:gap-3 w-full md:w-auto">
             {role !== "admin" && (
               <button
-                onClick={() => navigate(`/relawan/${id}/edit`)}
+                onClick={() => navigate(`/relawan/kunjungan/${id}/edit`)}
                 className="flex-1 md:flex-none flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 lg:px-5 py-2 sm:py-2.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg sm:rounded-xl font-bold text-xs sm:text-sm hover:bg-amber-100 transition-all shadow-sm"
               >
                 <Icon icon="solar:pen-outline" width={16} className="sm:w-[18px] sm:h-[18px]" />
@@ -162,7 +168,7 @@ export default function RelawanDetail() {
               </button>
             )}
             <button
-              onClick={() => navigate("/relawan")}
+              onClick={() => navigate("/relawan/kunjungan")}
               className="flex-1 md:flex-none px-3 sm:px-4 lg:px-5 py-2 sm:py-2.5 bg-slate-100 text-slate-600 rounded-lg sm:rounded-xl font-bold text-xs sm:text-sm hover:bg-slate-200 transition-all"
             >
               Kembali
@@ -181,7 +187,7 @@ export default function RelawanDetail() {
                 <Field label="Nomor Telepon" value={data.no_hp} />
                 <Field label="TPS" value={data.tps} />
                 <Field label="Ormas" value={ormasName} />
-                <Field label="Koordinator" value={data.koordinator?.nama || data.koordinator || "-"} />
+                <Field label="Koordinator" value={koor?.name || "-"} />
                 <Field label="Alamat Detail" value={data.alamat} full />
               </Grid>
             </Section>

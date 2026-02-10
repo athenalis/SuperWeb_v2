@@ -8,7 +8,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ApkStockTransaction extends Model
 {
     protected $table = 'apk_stock_transactions';
-
     public $timestamps = false;
 
     public const TYPE_IN = 'IN';
@@ -18,11 +17,12 @@ class ApkStockTransaction extends Model
     protected $fillable = [
         'paslon_id',
         'item_id',
-        'type',       // IN | OUT | ADJUST
+        'type',
         'qty',
         'note',
         'total_cost',
         'created_by',
+        'coordinator_id',   // ✅ baru
         'created_at',
     ];
 
@@ -32,19 +32,19 @@ class ApkStockTransaction extends Model
         'created_at' => 'datetime',
     ];
 
-    public function paslon(): BelongsTo
-    {
-        return $this->belongsTo(Paslon::class, 'paslon_id');
-    }
-
     public function item(): BelongsTo
     {
         return $this->belongsTo(ApkItem::class, 'item_id');
     }
 
-    // kalau kamu punya model User:
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    // ✅ koordinator yang request (khusus OUT)
+    public function coordinator(): BelongsTo
+    {
+        return $this->belongsTo(CoordinatorApk::class, 'coordinator_id');
     }
 }

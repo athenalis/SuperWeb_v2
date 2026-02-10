@@ -57,7 +57,7 @@ export default function Login() {
       else if (role === "kunjungan_koordinator") navigate("/relawan/kunjungan");
       else if (role === "superadmin") navigate("/superadmin");
       else if (role === "apk_koordinator") navigate("/relawan/apk");
-      else if (role === "admin_apk") navigate("/koordinator/apk");
+      else if (role === "admin_apk") navigate("/apk");
       else if (role === "apk_kurir" || role === "kurir_apk") navigate("/Dashboardkurir-apk");
       else if (role === "relawan") {
         // Relawan dengan is_apk -> pasangapk (prioritas)
@@ -121,8 +121,13 @@ export default function Login() {
 
           {/* HEADER */}
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-slate-800">
-              Selamat Datang
+          {/* <span className="font-bold text-3xl text-blue-900">
+                SUPER WEB
+              </span> */}
+            <h1 className="text-3xl font-bold text-slate-800 mt-3">
+              Selamat Datang di <span className="font-bold text-3xl text-blue-900">
+                SuperWeb
+              </span>
             </h1>
             <p className="text-md text-slate-500 mt-1">
               Silahkan login dengan akun anda

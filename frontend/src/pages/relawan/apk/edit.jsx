@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@iconify/react";
 import Select from "react-select";
@@ -31,6 +31,12 @@ export default function EditRelawanApk() {
   ========================= */
   const validateField = (name, value) => {
     switch (name) {
+      case "nik": 
+        if (!value) return "NIK wajib diisi";
+        if (!/^\d+$/.test(value)) return "NIK hanya boleh angka";
+        if (value.length !== 16) return "NIK harus 16 digit";
+        break;
+
       case "nama":
         if (!value.trim()) return "Nama wajib diisi";
         break;
@@ -137,16 +143,25 @@ export default function EditRelawanApk() {
   /* =========================
      WILAYAH (LOCKED – KOOR APK)
   ========================= */
-  const { data: wilayah, isLoading: loadingWilayah } = useQuery({
-    queryKey: ["wilayah-koordinator-apk"],
-    queryFn: async () => (await api.get("/me/wilayah-apk")).data.data,
-  });
+//  const { data: wilayah = null, isLoading: loadingWilayah } = useQuery({
+//   queryKey: ["wilayah-koordinator-apk"],
+//   queryFn: async () => {
+//     try {
+//       const res = await api.get("/me/wilayah-apk");
+//       return res.data.data;
+//     } catch (err) {
+//       // endpoint belum ada / role ga punya akses / 404 → fallback aja
+//       return null;
+//     }
+//   },
+//   retry: false,
+// });
 
   /* =========================
      SUBMIT UPDATE
   ========================= */
   const mutation = useMutation({
-    mutationFn: async () => api.put(`/relawan/apk/${id}`, form),
+    mutationFn: async () => api.put(`/relawan/${id}`, form),
 
     onSuccess: () => {
       queryClient.invalidateQueries(["relawan-apk"]);
@@ -172,7 +187,34 @@ export default function EditRelawanApk() {
     mutation.mutate();
   };
 
-  if (loading || loadingWilayah) {
+    // ===== lookup nama wilayah dari kode (biar ga tampil kode doang) =====
+const { data: cities = [], isLoading: loadingCities } = useQuery({
+  queryKey: ["wilayah-cities", form.province_code],
+  queryFn: async () => {
+    const res = await api.get(`/wilayah/cities/${form.province_code || 31}`);
+    return res.data?.data ?? res.data ?? [];
+  },
+});
+
+const { data: districts = [], isLoading: loadingDistricts } = useQuery({
+  queryKey: ["wilayah-districts", form.city_code],
+  enabled: !!form.city_code,
+  queryFn: async () => {
+    const res = await api.get(`/wilayah/districts/${form.city_code}`);
+    return res.data?.data ?? res.data ?? [];
+  },
+});
+
+const { data: villages = [], isLoading: loadingVillages } = useQuery({
+  queryKey: ["wilayah-villages", form.district_code],
+  enabled: !!form.district_code,
+  queryFn: async () => {
+    const res = await api.get(`/wilayah/villages/${form.district_code}`);
+    return res.data?.data ?? res.data ?? [];
+  },
+});
+
+  if (loading) {
     return (
       <div className="p-10 text-center text-slate-500">
         Memuat data relawan APK...
@@ -199,11 +241,24 @@ export default function EditRelawanApk() {
 
       <form onSubmit={handleSubmit} noValidate className="space-y-5">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="NIK">
+          <Field label="NIK" required error={errors.nik}>
             <input
+              name="nik"
               value={form.nik}
-              disabled
-              className={`${baseInput} bg-slate-100 cursor-not-allowed`}
+              inputMode="numeric"
+              maxLength={16}
+              onChange={(e) => {
+                const onlyNumber = e.target.value.replace(/\D/g, "").slice(0, 16);
+
+                setForm((prev) => ({
+                  ...prev,
+                  nik: onlyNumber,
+                }));
+
+                const err = validateField("nik", onlyNumber);
+                setErrors((prev) => ({ ...prev, nik: err }));
+              }}
+              className={baseInput}
             />
           </Field>
 
@@ -251,37 +306,57 @@ export default function EditRelawanApk() {
           <SelectField
             label="Kota/Kabupaten"
             value={form.city_code}
-            disabled
-            options={[
-              {
-                id: wilayah.city.city_code,
-                nama: wilayah.city.city,
-              },
-            ]}
+            disabled={false}
+            placeholder={loadingCities ? "Memuat kota..." : "Pilih Kota/Kabupaten"}
+            options={cities.map((c) => ({ id: c.city_code, nama: c.city }))}
+            onChange={(e) => {
+              const v = e.target.value;
+              setForm((p) => ({
+                ...p,
+                city_code: v,
+                district_code: "",
+                village_code: "",
+              }));
+            }}
           />
 
           <SelectField
             label="Kecamatan"
             value={form.district_code}
-            disabled
-            options={[
-              {
-                id: wilayah.district.district_code,
-                nama: wilayah.district.district,
-              },
-            ]}
+            disabled={!form.city_code}
+            placeholder={
+              !form.city_code
+                ? "Pilih kota dulu"
+                : loadingDistricts
+                ? "Memuat kecamatan..."
+                : "Pilih Kecamatan"
+            }
+            options={districts.map((d) => ({ id: d.district_code, nama: d.district }))}
+            onChange={(e) => {
+              const v = e.target.value;
+              setForm((p) => ({
+                ...p,
+                district_code: v,
+                village_code: "",
+              }));
+            }}
           />
 
           <SelectField
             label="Kelurahan"
             value={form.village_code}
-            disabled
-            options={[
-              {
-                id: wilayah.village.village_code,
-                nama: wilayah.village.village,
-              },
-            ]}
+            disabled={!form.district_code}
+            placeholder={
+              !form.district_code
+                ? "Pilih kecamatan dulu"
+                : loadingVillages
+                ? "Memuat kelurahan..."
+                : "Pilih Kelurahan"
+            }
+            options={villages.map((v) => ({ id: v.village_code, nama: v.village }))}
+            onChange={(e) =>
+              setForm((p) => ({ ...p, village_code: e.target.value }))
+            }
           />
 
           <Field label="Ormas" required error={errors.ormas_id}>
@@ -357,17 +432,20 @@ function Field({ label, required = false, error, children }) {
 /* =========================
    SELECT FIELD
 ========================= */
-function SelectField({ label, value, options, disabled }) {
+function SelectField({ label, value, options, disabled, placeholder, onChange }) {
   return (
     <Field label={label}>
       <div className="relative">
         <select
           value={value}
           disabled={disabled}
+          onChange={onChange}
           className={`w-full appearance-none border rounded-lg px-6 py-3 pr-12
                       bg-white focus:outline-none
                       ${disabled ? "bg-slate-100 cursor-not-allowed" : ""}`}
         >
+          <option value="">{placeholder ?? "Pilih"}</option>
+
           {options.map((o) => (
             <option key={o.id} value={o.id}>
               {o.nama}

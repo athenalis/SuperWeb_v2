@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ApkInstallation;
+use App\Models\CoordinatorApk;
 use App\Models\Relawan;
 use App\Models\CourierApk;
 use Illuminate\Http\Request;
@@ -39,6 +40,94 @@ class ApkInstallationController extends Controller
         }
 
         abort(response()->json(['message' => 'Akses ditolak: bukan relawan APK / kurir APK'], 403));
+    }
+
+    public function index(Request $request)
+    {
+        $user = $request->user();
+
+        // Hanya admin_apk boleh akses
+        $isAdminApk = method_exists($user, 'hasRole') && $user->hasRole('apk_koordinator');
+        if (!$isAdminApk) {
+            abort(response()->json(['message' => 'Akses ditolak: hanya apk_koordinator'], 403));
+        }
+
+        $koor = CoordinatorApk::where('user_id', $user->id)->first();
+
+        if (!$koor || !$koor->paslon_id) {
+            abort(response()->json(['message' => 'Paslon koordinator tidak ditemukan'], 403));
+        }
+
+        $koorPaslonId = (int) $koor->paslon_id;
+
+
+        $validated = $request->validate([
+            'paslon_id' => 'nullable|integer',
+            'user_id' => 'nullable|integer',
+            'relawan_id' => 'nullable|integer',
+            'apk_kurir_id' => 'nullable|integer',
+            'date_from' => 'nullable|date',
+            'date_to' => 'nullable|date',
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        $perPage = (int)($validated['per_page'] ?? 15);
+
+        $q = ApkInstallation::query()
+            ->with([
+                'relawan:id,nama',
+                'apkKurir:id,nama',
+            ])
+            ->where('paslon_id', $koorPaslonId);
+
+        if (!empty($validated['paslon_id'])) {
+            $q->where('paslon_id', $validated['paslon_id']);
+        }
+        if (!empty($validated['user_id'])) {
+            $q->where('user_id', $validated['user_id']);
+        }
+        if (!empty($validated['relawan_id'])) {
+            $q->where('relawan_id', $validated['relawan_id']);
+        }
+        if (!empty($validated['apk_kurir_id'])) {
+            $q->where('apk_kurir_id', $validated['apk_kurir_id']);
+        }
+
+        if (!empty($validated['date_from'])) {
+            $q->whereDate('taken_at', '>=', $validated['date_from']);
+        }
+        if (!empty($validated['date_to'])) {
+            $q->whereDate('taken_at', '<=', $validated['date_to']);
+        }
+
+        // urutkan terbaru
+        $rows = $q->orderByDesc('taken_at')->orderByDesc('id')->paginate($perPage);
+
+        // Siapkan photo_url agar FE gampang panggil foto
+        $rows->getCollection()->transform(function ($row) use ($request) {
+            return [
+                'id' => $row->id,
+                'user_id' => $row->user_id,
+                'paslon_id' => $row->paslon_id,
+                'relawan_id' => $row->relawan_id,
+                'apk_kurir_id' => $row->apk_kurir_id,
+                'relawan_nama' => $row->relawan?->nama,
+                'apk_kurir_nama' => $row->apkKurir?->nama,
+                'latitude' => $row->latitude,
+                'longitude' => $row->longitude,
+                'taken_at' => $row->taken_at,
+                'photo_path' => $row->photo_path,
+                'photo_size' => $row->photo_size,
+                'photo_hash' => $row->photo_hash,
+                'created_at' => $row->created_at,
+                'updated_at' => $row->updated_at,
+
+                // sesuaikan path ini dengan route kamu
+                'photo_url' => url("/api/apk-installations/{$row->id}/photo"),
+            ];
+        });
+
+        return response()->json($rows);
     }
 
     public function store(Request $request)
@@ -86,7 +175,7 @@ class ApkInstallationController extends Controller
         $user = $request->user();
         $row = ApkInstallation::findOrFail($id);
 
-        $allowedRoles = ['admin_apk', 'apk_koordinator'];
+        $allowedRoles = ['apk_koordinator'];
         $hasRole = false;
 
         if (method_exists($user, 'hasRole')) {

@@ -60,7 +60,7 @@ class AuthController extends Controller
                 }
                 break;
 
-            case 'kurir_apk':
+            case 'apk_kurir':
                 if ($user->apkKurir) {
                     $user->apkKurir->update(['status' => $status]);
                 }

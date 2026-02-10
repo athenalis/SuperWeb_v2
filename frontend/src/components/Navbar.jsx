@@ -173,7 +173,7 @@ export default function Navbar() {
     { name: "Kurir APK", path: "/kurir-apk", show: ["admin_apk"] },
 
     // Menu khusus apk_koordinator
-    { name: "Permintaan", path: "/permintaan-apk", show: ["apk_koordinator"] },
+    { name: "Pemesanan APK", path: "/permintaan-apk", show: ["apk_koordinator"] },
   ];
 
   // Menu khusus untuk relawan - dinamis berdasarkan flag is_kunjungan dan is_apk

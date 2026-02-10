@@ -228,7 +228,7 @@ export default function RelawanApk() {
   };
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => api.delete(`/relawan-apk/${id}`),
+    mutationFn: (id) => api.delete(`/relawan/${id}`),
     onMutate: () =>
       toast.loading("Menghapus relawan...", { id: "delete-relawan-apk" }),
     onSuccess: () => {
@@ -258,6 +258,7 @@ export default function RelawanApk() {
 
     const roleId = Number(localStorage.getItem("role_id"));
     const isAdminPaslon = roleId === 2;
+    const isAdminApk = roleId === 3;
   return (
     <div className="space-y-6">
       {/* ================= HEADER ================= */}
@@ -266,7 +267,7 @@ export default function RelawanApk() {
           Data Relawan APK
         </h1>
 
-        {!isAdminPaslon && (
+        {!isAdminPaslon && !isAdminApk && (
           <div className="flex flex-col sm:flex-row gap-3">
             <button
               onClick={() => setOpenImport(true)}
@@ -772,7 +773,7 @@ export default function RelawanApk() {
         )}
 
       {/* Modal Import */}
-      {!isAdminPaslon && openImport && createPortal(
+      {!isAdminPaslon && !isAdminApk && openImport && createPortal(
           <div className="fixed inset-0 z-50 flex items-center justify-center">
             <div
               className="absolute inset-0 bg-black/50 backdrop-blur-sm"

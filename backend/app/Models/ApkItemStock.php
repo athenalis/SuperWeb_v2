@@ -12,7 +12,7 @@ class ApkItemStock extends Model
     public $incrementing = false;
     protected $keyType = 'int';
     
-    public $timestamps = false;     // tabel ini tidak punya created_at, hanya updated_at
+    public $timestamps = false; 
 
     protected $fillable = [
         'item_id',

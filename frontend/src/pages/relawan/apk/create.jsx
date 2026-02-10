@@ -1,19 +1,25 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@iconify/react";
 import Select from "react-select";
 import toast from "react-hot-toast";
 import api from "../../../lib/axios";
 
-export default function InputRelawanApk() {
+export default function InputRelawan({ onClose }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
+
+  // ✅ auto detect: halaman apk vs kunjungan
+  const isApkPage = location.pathname.includes("/relawan/apk");
+  const redirectPath = isApkPage ? "/relawan/apk" : "/relawan/kunjungan";
 
   const [form, setForm] = useState({
     nama: "",
     nik: "",
     no_hp: "",
+    // ✅ TPS dihapus
     alamat: "",
     province_code: 31,
     city_code: "",
@@ -44,8 +50,7 @@ export default function InputRelawanApk() {
         if (value.length !== 16) return "NIK wajib 16 digit";
         break;
 
-      case "no_hp": {
-        // boleh angka dan + (khusus di awal)
+      case "no_hp":
         if (!/^\+?\d*$/.test(value))
           return "No HP hanya boleh angka atau +62";
 
@@ -60,9 +65,9 @@ export default function InputRelawanApk() {
 
         if (normalized.length < 10 || normalized.length > 13)
           return "No HP wajib 10–13 digit";
-
         break;
-      }
+
+      // ✅ TPS validation dihapus
 
       case "alamat":
         if (!value.trim()) return "Alamat wajib diisi";
@@ -90,6 +95,23 @@ export default function InputRelawanApk() {
     return "";
   };
 
+  /* =========================
+     HANDLE CHANGE
+  ========================= */
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+      ...(name === "city_code" && { district_code: "", village_code: "" }),
+      ...(name === "district_code" && { village_code: "" }),
+    }));
+
+    const error = validateField(name, value);
+    setErrors((prev) => ({ ...prev, [name]: error }));
+  };
+
   const validateAll = () => {
     const newErrors = {};
     Object.keys(form).forEach((key) => {
@@ -101,36 +123,19 @@ export default function InputRelawanApk() {
   };
 
   /* =========================
-     HANDLE CHANGE
-  ========================= */
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-
-    setForm((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-
-    const error = validateField(name, value);
-    setErrors((prev) => ({ ...prev, [name]: error }));
-  };
-
-  /* =========================
-     CHECK NIK (APK)
+     CHECK NIK
   ========================= */
   const checkNik = async (nik) => {
     try {
-      const res = await api.post("/relawan/apk/check-nik", { nik });
+      const res = await api.post("/relawan/check-nik", { nik });
       const data = res.data;
 
-      // ❌ NIK sudah aktif
       if (data.exists && data.deleted === false) {
         toast.error(data.message || "NIK sudah terdaftar dan aktif");
         setIsNikBlocked(true);
         return;
       }
 
-      // 🔁 NIK pernah ada (soft delete) → restore
       if (data.exists && data.deleted === true) {
         setRestoreNik(nik);
         setShowRestoreConfirm(true);
@@ -138,7 +143,6 @@ export default function InputRelawanApk() {
         return;
       }
 
-      // ✅ aman
       setIsNikBlocked(false);
     } catch (err) {
       console.error(err);
@@ -146,32 +150,53 @@ export default function InputRelawanApk() {
     }
   };
 
+  /* =========================
+     RESTORE
+     ✅ sukses: isi form + masuk restore mode
+     ❌ TIDAK toast akun & TIDAK redirect di sini
+  ========================= */
   const handleRestore = async () => {
     if (!restoreNik) return;
 
     setIsRestoring(true);
+    toast.loading("Mengaktifkan relawan...", { id: "restore-relawan" });
 
     try {
-      const res = await api.post("/relawan/apk/restore", { nik: restoreNik });
-      const { relawan, user } = res.data.data;
+      const res = await api.post("/relawan/restore", { nik: restoreNik });
 
-      setForm({
-        nama: relawan.nama,
-        nik: relawan.nik,
-        no_hp: relawan.no_hp,
-        alamat: relawan.alamat,
-        province_code: relawan.province_code,
-        city_code: relawan.city_code,
-        district_code: relawan.district_code,
-        village_code: relawan.village_code,
-        ormas_id: relawan.ormas_id ?? "",
-      });
+      const relawan = res?.data?.data?.relawan;
+      const user = res?.data?.data?.user || relawan?.user;
+
+      if (relawan) {
+        setForm({
+          nama: relawan.nama ?? "",
+          nik: relawan.nik ?? "",
+          no_hp: relawan.no_hp ?? "",
+          // ✅ TPS dihapus dari restore
+          alamat: relawan.alamat ?? "",
+          province_code: relawan.province_code ?? 31,
+          city_code: relawan.city_code ?? "",
+          district_code: relawan.district_code ?? "",
+          village_code: relawan.village_code ?? "",
+          ormas_id: relawan.ormas_id ?? "",
+        });
+      }
 
       setIsRestoreMode(true);
-      setRestoredUser(user);
+      setRestoredUser(user || null);
       setShowRestoreConfirm(false);
+
+      toast.success(
+        "Data relawan berhasil dimuat. Silakan periksa lalu klik Simpan.",
+        {
+          id: "restore-relawan",
+          duration: 3000,
+        }
+      );
     } catch (err) {
-      toast.error("Gagal mengaktifkan relawan");
+      console.error(err);
+      const msg = err?.response?.data?.message || "Gagal mengaktifkan relawan";
+      toast.error(msg, { id: "restore-relawan" });
     } finally {
       setIsRestoring(false);
     }
@@ -191,11 +216,11 @@ export default function InputRelawanApk() {
   }));
 
   /* =========================
-     WILAYAH (Bawaan Koor APK)
+     WILAYAH (Bawaan Koor)
   ========================= */
   const { data: wilayah, isLoading: loadingWilayah } = useQuery({
-    queryKey: ["wilayah-koordinator-apk"],
-    queryFn: async () => (await api.get("/me/wilayah-apk")).data.data,
+    queryKey: ["wilayah-koordinator"],
+    queryFn: async () => (await api.get("/me/wilayah")).data.data,
   });
 
   useEffect(() => {
@@ -211,45 +236,56 @@ export default function InputRelawanApk() {
   }, [wilayah]);
 
   /* =========================
-     SUBMIT
+     SUBMIT CREATE (NON-RESTORE)
   ========================= */
   const mutation = useMutation({
-    // NOTE: kalau backend kamu pakai /relawan-apk, ganti di sini
-    mutationFn: async () => api.post("/relawan/apk", form),
+    mutationFn: async () => api.post("/relawan", form),
 
     onSuccess: (res) => {
-      queryClient.invalidateQueries(["relawan-apk"]);
+      queryClient.invalidateQueries([isApkPage ? "relawan-apk" : "relawan"]);
 
-      const akun = res.data.data.user;
+      const akun = res?.data?.data?.user;
 
-      toast.success(
-        `Relawan APK berhasil dibuat!\nEmail: ${akun.email}\nPassword: ${akun.password}`,
-        {
-          duration: 6000,
-          style: {
-            whiteSpace: "pre-line",
-            background: "#1e293b",
-            color: "white",
-            padding: "14px",
-            borderRadius: "10px",
-          },
-        }
-      );
+      if (akun?.email && akun?.password) {
+        toast.success(
+          `${isApkPage ? "Relawan APK" : "Relawan"} berhasil dibuat!\nEmail: ${akun.email}\nPassword: ${akun.password}`,
+          {
+            duration: 6000,
+            style: {
+              whiteSpace: "pre-line",
+              background: "#1e293b",
+              color: "white",
+              padding: "14px",
+              borderRadius: "10px",
+            },
+          }
+        );
+      } else {
+        toast.success(
+          `${isApkPage ? "Relawan APK" : "Relawan"} berhasil dibuat!`,
+          { duration: 3000 }
+        );
+        console.log("Create response:", res?.data);
+      }
 
-      navigate("/relawan/apk");
+      navigate(redirectPath, { replace: true });
     },
 
     onError: (err) => {
       const msg = err.response?.data?.message || "Gagal menyimpan data";
-
       toast.error(msg, {
-        style: {
-          background: "#dc2626",
-          color: "white",
-        },
+        style: { background: "#dc2626", color: "white" },
       });
     },
   });
+
+  if (loadingWilayah) {
+    return (
+      <div className="p-10 text-center text-slate-500">
+        Memuat data wilayah Relawan...
+      </div>
+    );
+  }
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -264,26 +300,45 @@ export default function InputRelawanApk() {
       return;
     }
 
+    // ✅ kalau restore mode -> toast sukses + redirect saat klik SIMPAN
     if (isRestoreMode) {
-      toast.success(
-        `Relawan berhasil diaktifkan!\nEmail: ${restoredUser.email}\nPassword: ${restoredUser.password}`,
-        { duration: 6000, style: { whiteSpace: "pre-line" } }
-      );
+    // ✅ ambil dari beberapa kemungkinan key (biar ga gampang null)
+    const email =
+      restoredUser?.email ||
+      restoredUser?.username ||
+      restoredUser?.akun ||
+      restoredUser?.user?.email;
 
-      navigate("/relawan/apk");
-      return;
-    }
+    const password =
+      restoredUser?.password ||
+      restoredUser?.new_password ||
+      restoredUser?.plain_password ||
+      restoredUser?.generated_password ||
+      restoredUser?.user?.password;
+
+    // ✅ toast multi-line + style konsisten
+    toast.success(
+      `Relawan berhasil diaktifkan!\n${
+        email ? `Email: ${email}` : "Email: -"
+      }\n${password ? `Password: ${password}` : "Password: - (tidak dikirim backend)"}`,
+      {
+        duration: 7000,
+        style: {
+          whiteSpace: "pre-line",
+          background: "#1e293b",
+          color: "white",
+          padding: "14px",
+          borderRadius: "10px",
+        },
+      }
+    );
+
+    navigate(redirectPath, { replace: true });
+    return;
+  }
 
     mutation.mutate();
   };
-
-  if (loadingWilayah) {
-    return (
-      <div className="p-10 text-center text-slate-500">
-        Memuat data wilayah Relawan APK...
-      </div>
-    );
-  }
 
   /* =========================
      STYLE
@@ -292,7 +347,7 @@ export default function InputRelawanApk() {
     "w-full border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none";
 
   const baseSelect =
-    "w-full appearance-none border rounded-lg px-4 py-2 pr-10 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none";
+    "w-full appearance-none border rounded-lg px-6 py-3 pr-12 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none";
 
   const disabledSelect = "bg-slate-100 cursor-not-allowed";
 
@@ -300,7 +355,7 @@ export default function InputRelawanApk() {
     <>
       <div className="bg-white rounded-2xl p-8 shadow max-w-8xl mx-auto">
         <h2 className="text-4xl text-blue-900 font-bold mb-6 text-center">
-          Input Relawan APK
+          Input Relawan
         </h2>
 
         <form onSubmit={handleSubmit} noValidate className="space-y-5">
@@ -351,6 +406,8 @@ export default function InputRelawanApk() {
             />
           </Field>
 
+          {/* ✅ TPS FIELD DIHAPUS */}
+
           <Field label="Alamat" required error={errors.alamat}>
             <textarea
               name="alamat"
@@ -367,7 +424,7 @@ export default function InputRelawanApk() {
               <select
                 disabled
                 value={31}
-                className={`px-6 py-3 pr-12 ${baseSelect} ${disabledSelect}`}
+                className={`${baseSelect} ${disabledSelect}`}
               >
                 <option>DKI JAKARTA</option>
               </select>
@@ -455,7 +512,10 @@ export default function InputRelawanApk() {
                   valueContainer: (base) => ({ ...base, padding: "0 16px" }),
                   placeholder: (base) => ({ ...base, color: "#94a3b8" }),
                   singleValue: (base) => ({ ...base, color: "#0f172a" }),
-                  indicatorsContainer: (base) => ({ ...base, color: "#94a3b8" }),
+                  indicatorsContainer: (base) => ({
+                    ...base,
+                    color: "#94a3b8",
+                  }),
                   indicatorSeparator: () => ({ display: "none" }),
                   dropdownIndicator: (base) => ({
                     ...base,
@@ -480,7 +540,7 @@ export default function InputRelawanApk() {
 
             <button
               type="button"
-              onClick={() => navigate("/relawan/apk")}
+              onClick={() => navigate(redirectPath)}
               className="text-gray-500 hover:text-underline"
             >
               Batal

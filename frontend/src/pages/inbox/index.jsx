@@ -10,13 +10,6 @@ import RelawanVisitView from "./RelawanVisitView";
 import AdminApkRequestView from "./AdminApkRequestView";
 import KoordinatorApkRequestView from "./KoordinatorApkRequestView";
 
-import {
-  seedMockIfEmpty,
-  getAllNotifications,
-  markRead,
-  readAll,
-  removeNotif,
-} from "./mockNotifApk";
 
 // === ALERT MODAL FOR DELETED VISITS ===
 const AlertModal = ({ isOpen, onClose, message, title = "Alert" }) => {
@@ -96,7 +89,6 @@ export default function InboxIndex() {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedNotification, setSelectedNotification] = useState(null);
-  const [pendingVerifications, setPendingVerifications] = useState([]); // kept (no changes)
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   // Pagination State (kept - tidak dipakai di mode mock)
@@ -135,26 +127,34 @@ export default function InboxIndex() {
     }
   };
 
-  // ✅ MODIFIED: mock fetch (tanpa backend)
+  // ✅ Fetch notifications from real API
   const fetchNotifications = async (isLoadMore = false) => {
-    // tetap jaga behavior loading biar UI sama
     const timeout = setTimeout(() => isLoadMore ? setLoadingMore(false) : setLoading(false), 5000);
 
     try {
-      seedMockIfEmpty();
-      const data = getAllNotifications();
+      const currentPage = isLoadMore ? page + 1 : 1;
+      const res = await api.get(`/notifications?page=${currentPage}`);
+      const response = res.data;
 
       clearTimeout(timeout);
 
-      // mode mock: no pagination
-      setNotifications(data);
-      setPage(1);
-      setHasMore(false);
+      const newData = response.data?.data || response.data || [];
 
-      // Auto-select first batch notification if available (only on fresh load)
-      const firstBatch = data.find(n => n.data?.type === 'verification_batch' && !n.read_at);
-      if (firstBatch && !selectedNotification) {
-        setSelectedNotification(firstBatch);
+      if (isLoadMore) {
+        setNotifications(prev => [...prev, ...newData]);
+      } else {
+        setNotifications(newData);
+      }
+
+      setPage(currentPage);
+      setHasMore(response.data?.next_page_url ? true : false);
+
+      // Auto-select first unread notification if available (only on fresh load)
+      if (!isLoadMore && !selectedNotification) {
+        const firstUnread = newData.find(n => !n.read_at);
+        if (firstUnread) {
+          setSelectedNotification(firstUnread);
+        }
       }
     } catch (err) {
       console.error("Failed to fetch notifications", err);
@@ -164,42 +164,41 @@ export default function InboxIndex() {
     }
   };
 
+
   const handleLoadMore = () => {
-    // mode mock: tidak ada load more
-    setLoadingMore(false);
-    setHasMore(false);
+    if (hasMore && !loadingMore) {
+      setLoadingMore(true);
+      fetchNotifications(true);
+    }
   };
 
-  // ✅ MODIFIED: read all via mock (tanpa backend)
+  // ✅ Read all via real API
   const handleReadAll = async () => {
-    readAll();
-    setNotifications(getAllNotifications());
-    window.dispatchEvent(new Event('notification-read'));
+    try {
+      await api.post('/notifications/read-all');
+      setNotifications(prev => prev.map(n => ({ ...n, read_at: new Date().toISOString() })));
+      window.dispatchEvent(new Event('notification-read'));
+    } catch (err) {
+      console.error("Failed to mark all as read", err);
+      toast.error("Gagal menandai semua dibaca");
+    }
   };
 
-  // ✅ MODIFIED: click notif — mark read via mock untuk type apk_request*, sisanya tetap jalan (kunjungan masih pakai API detail view)
+  // ✅ Click notif — mark read via real API
   const handleNotificationClick = async (notif) => {
     console.log("Notification clicked:", notif.data); // Debug log
 
     // Optimistic read status update
     if (!notif.read_at) {
-      // kalau notif ini mock (apk_request*) -> read via local
-      if ((notif.data?.type || "").startsWith("apk_request")) {
-        markRead(notif.id);
-        setNotifications(getAllNotifications());
+      markAsReadLocally(notif.id);
+      try {
+        await api.post(`/notifications/${notif.id}/read`);
         window.dispatchEvent(new Event('notification-read'));
-      } else {
-        // default existing behavior (kunjungan)
-        markAsReadLocally(notif.id);
-
-        try {
-          await api.post(`/notifications/${notif.id}/read`);
-          window.dispatchEvent(new Event('notification-read'));
-        } catch (err) {
-          console.error("Failed to mark as read", err);
-        }
+      } catch (err) {
+        console.error("Failed to mark as read", err);
       }
     }
+
 
     const data = notif.data || {};
 
@@ -212,8 +211,21 @@ export default function InboxIndex() {
       }
     };
 
-    // ✅ NEW: APK REQUEST -> show in split view
+    // ✅ NEW: APK REQUEST -> show in split view OR navigate if koordinator/kurir
     if ((data.type || "").startsWith("apk_request")) {
+      // Jika user adalah koordinator, navigate ke halaman request dengan query param
+      if (role === "apk_koordinator") {
+        navigate(data.action_url || `/permintaan-apk?id=${data.apk_request_id}`);
+        return;
+      }
+
+      // Jika user adalah kurir dan tipe assigned, navigate ke dashboard kurir
+      if ((role === "apk_kurir" || role === "kurir_apk") && data.type === 'apk_request_assigned') {
+        navigate("/Dashboardkurir-apk");
+        return;
+      }
+
+      // Untuk admin atau lainnya, tampilkan di split view
       setSelectedNotification(notif);
       if (window.innerWidth < 768) {
         window.history.pushState({ view: 'detail' }, '');
@@ -288,10 +300,10 @@ export default function InboxIndex() {
   useEffect(() => {
     fetchNotifications();
 
-    // Auto-refresh (mock)
+    // Auto-refresh every 30 seconds
     const interval = setInterval(() => {
       fetchNotifications();
-    }, 3000);
+    }, 30000);
 
     return () => clearInterval(interval);
   }, []); // only mount
@@ -336,13 +348,7 @@ export default function InboxIndex() {
             setSelectedNotification(null);
           }
 
-          // ✅ MODIFIED: delete via local for apk_request*, else keep API
-          if ((notif.data?.type || "").startsWith("apk_request")) {
-            removeNotif(notif.id);
-            setNotifications(getAllNotifications());
-            return;
-          }
-
+          // ✅ Delete via real API
           try {
             await api.delete(`/notifications/${notif.id}`);
           } catch (err) {
@@ -436,6 +442,10 @@ export default function InboxIndex() {
                           badgeClass = 'bg-rose-50 text-rose-700 border-rose-200';
                           iconName = 'mdi:close-circle';
                           label = 'Ditolak';
+                        } else if (type === 'apk_request_assigned') {
+                          badgeClass = 'bg-cyan-50 text-cyan-700 border-cyan-200';
+                          iconName = 'mdi:truck-fast';
+                          label = 'Tugas Baru';
                         }
 
                         return (
@@ -503,14 +513,16 @@ export default function InboxIndex() {
             role === "admin_apk" ? (
               <AdminApkRequestView
                 key={selectedNotification.id}
-                notification={selectedNotification}
+                requestId={selectedNotification.data?.apk_request_id}
                 onComplete={handleBatchComplete}
+                onBack={() => setSelectedNotification(null)}
               />
             ) : (
               <KoordinatorApkRequestView
                 key={selectedNotification.id}
-                notification={selectedNotification}
+                requestId={selectedNotification.data?.apk_request_id}
                 onComplete={handleBatchComplete}
+                onBack={() => setSelectedNotification(null)}
               />
             )
           ) : selectedNotification.data?.kunjungan_id ? (

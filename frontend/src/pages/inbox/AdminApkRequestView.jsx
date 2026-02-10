@@ -94,7 +94,7 @@ export default function AdminApkRequestView({ requestId, onComplete, onBack }) {
     const { data: couriers = [] } = useQuery({
         queryKey: ["apk-couriers"],
         queryFn: async () => {
-            const res = await api.get("/apk-kurirs");
+            const res = await api.get("/apk-kurir/active");
             return res.data?.data || res.data || [];
         },
     });
@@ -213,6 +213,25 @@ export default function AdminApkRequestView({ requestId, onComplete, onBack }) {
                     </div>
                 </SectionCard>
 
+                <SectionCard title="Detail Pengiriman" icon="mdi:map-marker-radius-outline">
+                    <div className="flex flex-col gap-3">
+                        <div>
+                            <div className="text-xs font-bold text-slate-500 uppercase mb-1">Alamat Penjemputan / Pengiriman</div>
+                            <div className="text-sm text-slate-800 bg-slate-50 p-2 rounded border border-slate-100">
+                                {order.pickup_address || coordinator?.alamat || "-"}
+                            </div>
+                        </div>
+                        {order.description && (
+                            <div>
+                                <div className="text-xs font-bold text-slate-500 uppercase mb-1">Catatan / Keperluan</div>
+                                <div className="text-sm text-slate-800 bg-yellow-50 p-2 rounded border border-yellow-100 italic">
+                                    "{order.description}"
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </SectionCard>
+
                 <SectionCard title={`Daftar Barang (${items.length})`} icon="mdi:package-variant-closed">
                     {items.length === 0 ? (
                         <div className="text-slate-400">-</div>
@@ -249,39 +268,42 @@ export default function AdminApkRequestView({ requestId, onComplete, onBack }) {
             </div>
 
             {/* Action bar (only when pending) */}
-            {canAct && (
-                <div className="border-t border-slate-200 bg-white p-4 sticky bottom-0">
-                    <div className="flex gap-3">
-                        <button
-                            onClick={() => {
-                                setFeedback("");
-                                setRejectOpen(true);
-                            }}
-                            className="flex-1 py-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 font-bold hover:bg-rose-100 transition"
-                        >
-                            <span className="inline-flex items-center gap-2 justify-center">
-                                <Icon icon="mdi:close-circle-outline" width={18} />
-                                Tolak
-                            </span>
-                        </button>
+            {
+                canAct && (
+                    <div className="border-t border-slate-200 bg-white p-4 sticky bottom-0">
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => {
+                                    setFeedback("");
+                                    setRejectOpen(true);
+                                }}
+                                className="flex-1 py-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 font-bold hover:bg-rose-100 transition"
+                            >
+                                <span className="inline-flex items-center gap-2 justify-center">
+                                    <Icon icon="mdi:close-circle-outline" width={18} />
+                                    Tolak
+                                </span>
+                            </button>
 
-                        <button
-                            onClick={() => {
-                                setSelectedCourierId(couriers[0]?.id?.toString() || "");
-                                setPickupAddress(coordinator?.alamat || "");
-                                setPickupDate(new Date().toISOString().slice(0, 16));
-                                setApproveOpen(true);
-                            }}
-                            className="flex-1 py-3 rounded-2xl bg-blue-900 text-white font-bold hover:bg-blue-800 transition"
-                        >
-                            <span className="inline-flex items-center gap-2 justify-center">
-                                <Icon icon="mdi:check-circle-outline" width={18} />
-                                Setujui
-                            </span>
-                        </button>
+                            <button
+                                onClick={() => {
+                                    setSelectedCourierId(couriers[0]?.id?.toString() || "");
+                                    // Use user's pickup_address if available, fallback to coordinator address
+                                    setPickupAddress(order.pickup_address || coordinator?.alamat || "");
+                                    setPickupDate(new Date().toISOString().slice(0, 16));
+                                    setApproveOpen(true);
+                                }}
+                                className="flex-1 py-3 rounded-2xl bg-blue-900 text-white font-bold hover:bg-blue-800 transition"
+                            >
+                                <span className="inline-flex items-center gap-2 justify-center">
+                                    <Icon icon="mdi:check-circle-outline" width={18} />
+                                    Setujui
+                                </span>
+                            </button>
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Approve Modal */}
             <ModalShell
@@ -380,6 +402,6 @@ export default function AdminApkRequestView({ requestId, onComplete, onBack }) {
                     />
                 </div>
             </ModalShell>
-        </div>
+        </div >
     );
 }

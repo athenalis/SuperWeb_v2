@@ -61,15 +61,25 @@ export default function DptIndex() {
   const [dptDataKota, setDptDataKota] = useState([]);
   const [dptDataKecamatan, setDptDataKecamatan] = useState([]);
   const [dptDataKelurahan, setDptDataKelurahan] = useState([]);
-  const [legend, setLegend] = useState([]);
+  const [legendKota, setLegendKota] = useState([]);
+  const [legendKecamatan, setLegendKecamatan] = useState([]);
+  const [legendKelurahan, setLegendKelurahan] = useState([]);
 
   useEffect(() => {
     api.get("/peta/dpt/kota").then((res) => {
       setDptDataKota(res.data.data || []);
-      setLegend(res.data.legend || []);
+      setLegendKota(res.data.legend || []);
     });
-    api.get("/peta/dpt/kecamatan").then((res) => setDptDataKecamatan(res.data.data || []));
-    api.get("/peta/dpt/kelurahan").then((res) => setDptDataKelurahan(res.data.data || []));
+
+    api.get("/peta/dpt/kecamatan").then((res) => {
+      setDptDataKecamatan(res.data.data || []);
+      setLegendKecamatan(res.data.legend || []);
+    });
+
+    api.get("/peta/dpt/kelurahan").then((res) => {
+      setDptDataKelurahan(res.data.data || []);
+      setLegendKelurahan(res.data.legend || []);
+    });
   }, []);
 
   /* ======================
@@ -179,7 +189,11 @@ export default function DptIndex() {
       <div className="bg-white rounded-2xl border border-slate-300 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b font-semibold">
           Peta Sebaran DPT
+          <div className="mt-1 text-[12.5px] text-slate-500 sm:hidden">
+            Tekan lama untuk melihat detail wilayah
+          </div>
         </div>
+
 
         <div className="h-[500px]">
           {isMapReady ? (
@@ -191,7 +205,11 @@ export default function DptIndex() {
               dptKota={dptKota}
               dptKecamatan={dptKecamatan}
               dptKelurahan={dptKelurahan}
-              legend={legend}
+              legendByLevel={{
+                kota: legendKota,
+                kecamatan: legendKecamatan,
+                kelurahan: legendKelurahan,
+              }}
               selectedCityName={selectedCityName}
               selectedDistrictName={selectedDistrictName}
               onRegionClick={handleMapClick}

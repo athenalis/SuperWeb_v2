@@ -11,6 +11,9 @@ import CreateKoordinator from "./pages/koordinator/kunjungan/create";
 import EditKoordinator from "./pages/koordinator/kunjungan/edit";
 import DetailKoordinator from "./pages/koordinator/kunjungan/detail";
 
+import AdminApk from "./pages/apk/adminapk";
+import KelolaBarang from "./pages/apk/kelolabarang";
+import HistoryApk from "./pages/apk/history";
 import KoordinatorApk from "./pages/koordinator/apk/index";
 import CreateKoordinatorApk from "./pages/koordinator/apk/create";
 import EditKoordinatorApk from "./pages/koordinator/apk/edit";
@@ -128,11 +131,14 @@ export default function App() {
             <Route path="konten/:id/edit" element={<EditContent />} />
             <Route path="konten/:id" element={<DetailContent />} />
             <Route path="konten/:id/analytic" element={<AnalyticContent />} />
+
+            
           </Route>
 
           {/* ================= ADMIN_APK (3) ================= */}
           <Route element={<RequireRole allowedRoleIds={[3]} />}>
             <Route path="kurir-apk" element={<KurirApk />} />
+            <Route path="history" element={<HistoryApk />} />
           </Route>
 
           {/* ================= KUNJUNGAN_KOORDINATOR (4) ================= */}
@@ -173,6 +179,9 @@ export default function App() {
             <Route path="koordinator/apk/create" element={<CreateKoordinatorApk />} />
             <Route path="koordinator/apk/:id/edit" element={<EditKoordinatorApk />} />
             <Route path="koordinator/apk/:id" element={<DetailKoordinatorApk />} />
+
+            <Route path="adminapk" element={<AdminApk />} />
+            <Route path="kelolabarang" element={<KelolaBarang />} />
           </Route>
 
           {/* ================= SHARED: RELAWAN APK READ (2, 3, 5) ================= */}

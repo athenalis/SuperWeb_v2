@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
 import { Icon } from "@iconify/react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "react-hot-toast";
+import api from "../../lib/axios";
 import Navbar from "../../components/Navbar";
 
 /**
@@ -8,152 +11,112 @@ import Navbar from "../../components/Navbar";
  */
 
 // Dummy data - Tugas pengiriman dari admin
-const dummyTugas = [
-    {
-        id: 1,
-        nomorOrder: "APK-2026-0201",
-        items: [
-            { nama: "Spanduk Paslon", jumlah: 20 },
-            { nama: "Stiker", jumlah: 100 },
-        ],
-        koordinator: {
-            nama: "Budi Santoso",
-            telepon: "081234567890",
-            alamat: "Jl. Menteng Raya No. 45, Kec. Menteng, Jakarta Pusat",
-        },
-        tanggalOrder: "2026-02-02 08:30",
-        deadline: "2026-02-02 14:00",
-        status: "pending", // pending, dikirim, sampai, selesai
-        prioritas: "tinggi",
-        catatan: "Mohon diantar sebelum jam 2 siang, ada acara kampanye",
-        isNew: true,
-    },
-    {
-        id: 2,
-        nomorOrder: "APK-2026-0202",
-        items: [
-            { nama: "Kaos Kampanye", jumlah: 50 },
-            { nama: "Topi Kampanye", jumlah: 50 },
-        ],
-        koordinator: {
-            nama: "Citra Dewi",
-            telepon: "081234567891",
-            alamat: "Jl. Kemang Raya No. 12, Kec. Kemang, Jakarta Selatan",
-        },
-        tanggalOrder: "2026-02-02 09:15",
-        deadline: "2026-02-02 17:00",
-        status: "dikirim",
-        prioritas: "normal",
-        catatan: "",
-        isNew: false,
-    },
-    {
-        id: 3,
-        nomorOrder: "APK-2026-0203",
-        items: [
-            { nama: "Baliho 3x4m", jumlah: 5 },
-        ],
-        koordinator: {
-            nama: "Dedi Kurnia",
-            telepon: "081234567892",
-            alamat: "Jl. Tebet Raya No. 88, Kec. Tebet, Jakarta Selatan",
-        },
-        tanggalOrder: "2026-02-01 14:00",
-        deadline: "2026-02-02 12:00",
-        status: "selesai",
-        prioritas: "tinggi",
-        catatan: "Sudah diterima koordinator",
-        isNew: false,
-    },
-    {
-        id: 4,
-        nomorOrder: "APK-2026-0204",
-        items: [
-            { nama: "Bendera Partai", jumlah: 30 },
-            { nama: "Umbul-umbul", jumlah: 20 },
-        ],
-        koordinator: {
-            nama: "Eka Putri",
-            telepon: "081234567893",
-            alamat: "Jl. Kelapa Gading Boulevard, Kec. Kelapa Gading, Jakarta Utara",
-        },
-        tanggalOrder: "2026-02-02 10:00",
-        deadline: "2026-02-03 10:00",
-        status: "pending",
-        prioritas: "normal",
-        catatan: "",
-        isNew: true,
-    },
-];
-
-// Dummy notifikasi
-const dummyNotifikasi = [
-    {
-        id: 1,
-        pesan: "Order baru APK-2026-0201 dari Admin",
-        waktu: "5 menit lalu",
-        dibaca: false,
-        tipe: "order_baru",
-    },
-    {
-        id: 2,
-        pesan: "Order APK-2026-0204 perlu segera dikirim",
-        waktu: "30 menit lalu",
-        dibaca: false,
-        tipe: "reminder",
-    },
-    {
-        id: 3,
-        pesan: "Koordinator Budi konfirmasi terima barang",
-        waktu: "1 jam lalu",
-        dibaca: true,
-        tipe: "konfirmasi",
-    },
-];
+// Dummy data removed as real API is integrated
 
 export default function KurirDashboard() {
-    const [tugas, setTugas] = useState(dummyTugas);
-    const [notifikasi, setNotifikasi] = useState(dummyNotifikasi);
-    const [activeTab, setActiveTab] = useState("aktif"); // aktif, selesai
+    const [activeTab, setActiveTab] = useState("aktif");
     const [showNotifPanel, setShowNotifPanel] = useState(false);
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [selectedTugas, setSelectedTugas] = useState(null);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [confirmAction, setConfirmAction] = useState(null);
 
+    // React Query for Tasks
+    const { data: tugasData, isLoading: isLoadingTugas, refetch: refetchTugas } = useQuery({
+        queryKey: ['apkRequests'],
+        queryFn: async () => {
+            const res = await api.get('/apk-requests');
+            return res.data.data; // Assuming standard structure
+        },
+    });
+
+    // React Query for Notifications
+    const { data: notifData, refetch: refetchNotif } = useQuery({
+        queryKey: ['notifications'],
+        queryFn: async () => {
+            const res = await api.get('/notifications');
+            return res.data.data?.data || res.data.data || [];
+        },
+        refetchInterval: 30000,
+    });
+
+    const queryClient = useQueryClient();
+
+    // Mutations
+    const pickupMutation = useMutation({
+        mutationFn: (id) => api.post(`/apk-requests/${id}/pickup`),
+        onSuccess: () => {
+            toast.success("Status berhasil diperbarui: Sedang Dikirim");
+            queryClient.invalidateQueries(['apkRequests']);
+            refetchTugas();
+            setShowConfirmModal(false);
+            setSelectedTugas(null);
+        },
+        onError: (err) => {
+            toast.error("Gagal memperbarui status");
+            console.error(err);
+        }
+    });
+
+    const arriveMutation = useMutation({
+        mutationFn: (id) => api.post(`/apk-requests/${id}/arrive`),
+        onSuccess: () => {
+            toast.success("Status berhasil diperbarui: Sampai Tujuan");
+            queryClient.invalidateQueries(['apkRequests']);
+            refetchTugas();
+            setShowConfirmModal(false);
+            setSelectedTugas(null);
+        },
+        onError: (err) => {
+            toast.error("Gagal memperbarui status");
+            console.error(err);
+        }
+    });
+
+    const tugas = tugasData || [];
+    const notifikasi = notifData || [];
 
     // Statistik untuk badge tab
-    const tugasPending = tugas.filter((t) => t.status === "pending").length;
-    const tugasDikirim = tugas.filter((t) => t.status === "dikirim").length;
-    const notifBelumDibaca = notifikasi.filter((n) => !n.dibaca).length;
+    // Status mapping:
+    // APPROVED -> Pending (Menunggu)
+    // PICKED_UP -> Dikirim (Sedang Dikirim)
+    // ARRIVED -> Selesai (Sampai/Selesai bagi kurir)
+    // DELIVERED -> Selesai (Diterima Koordinator)
+
+    // Helper to map backend status to UI status
+    const mapStatus = (statusObj) => {
+        const code = statusObj?.code || 'PENDING';
+        if (code === 'APPROVED') return 'pending';
+        if (code === 'PICKED_UP') return 'dikirim';
+        if (code === 'ARRIVED' || code === 'DELIVERED') return 'selesai';
+        return 'unknown';
+    };
+
+    const tugasPending = tugas.filter((t) => mapStatus(t.status) === "pending").length;
+    const tugasDikirim = tugas.filter((t) => mapStatus(t.status) === "dikirim").length;
+    const notifBelumDibaca = notifikasi.filter((n) => !n.read_at).length;
 
     // Filter tugas berdasarkan tab
     const filteredTugas = tugas.filter((t) => {
-        if (activeTab === "aktif") return t.status !== "selesai";
-        return t.status === "selesai";
+        const s = mapStatus(t.status);
+        if (activeTab === "aktif") return s === "pending" || s === "dikirim";
+        return s === "selesai";
     });
 
     // Handler update status
     const handleUpdateStatus = (tugasId, newStatus) => {
-        setTugas((prev) =>
-            prev.map((t) =>
-                t.id === tugasId ? { ...t, status: newStatus, isNew: false } : t
-            )
-        );
-        setShowConfirmModal(false);
-        setSelectedTugas(null);
+        // newStatus is 'dikirim' or 'selesai' from UI
+        if (newStatus === 'dikirim') {
+            pickupMutation.mutate(tugasId);
+        } else if (newStatus === 'selesai') {
+            arriveMutation.mutate(tugasId);
+        }
     };
 
     // Handler buka detail
     const handleOpenDetail = (tugasItem) => {
         setSelectedTugas(tugasItem);
         setShowDetailModal(true);
-        // Mark as read
-        setTugas((prev) =>
-            prev.map((t) =>
-                t.id === tugasItem.id ? { ...t, isNew: false } : t
-            )
-        );
     };
 
     // Handler konfirmasi action
@@ -164,7 +127,10 @@ export default function KurirDashboard() {
     };
 
     // Get status styling
-    const getStatusStyle = (status) => {
+    const getStatusStyle = (statusObj) => {
+        const code = statusObj?.code || 'PENDING';
+        const uiStatus = mapStatus(statusObj);
+
         const styles = {
             pending: {
                 bg: "bg-yellow-100",
@@ -180,35 +146,27 @@ export default function KurirDashboard() {
                 icon: "mdi:truck-delivery",
                 label: "Sedang Dikirim",
             },
-            sampai: {
-                bg: "bg-purple-100",
-                text: "text-purple-700",
-                border: "border-purple-200",
-                icon: "mdi:map-marker-check",
-                label: "Sampai Tujuan",
-            },
             selesai: {
                 bg: "bg-emerald-100",
                 text: "text-emerald-700",
                 border: "border-emerald-200",
                 icon: "mdi:check-circle",
-                label: "Selesai",
+                label: "Selesai / Sampai",
             },
         };
-        return styles[status] || styles.pending;
+        return styles[uiStatus] || styles.pending;
     };
 
-    // Get prioritas styling
+    // Get prioritas styling - APkRequest might not have priority field, defaulting
     const getPrioritasStyle = (prioritas) => {
-        if (prioritas === "tinggi") {
-            return "bg-red-100 text-red-700 border-red-200";
-        }
+        // Assuming no priority field in backend for now, or check standard
         return "bg-slate-100 text-slate-600 border-slate-200";
     };
 
     // Format waktu
     const formatWaktu = (dateStr) => {
-        const date = new Date(dateStr.replace(" ", "T"));
+        if (!dateStr) return '-';
+        const date = new Date(dateStr);
         return date.toLocaleString("id-ID", {
             day: "numeric",
             month: "short",
@@ -217,17 +175,19 @@ export default function KurirDashboard() {
         });
     };
 
-    // Check deadline
+    // Check deadline (pickup_scheduled_at)
     const isDeadlineSoon = (deadline) => {
+        if (!deadline) return false;
         const now = new Date();
-        const deadlineDate = new Date(deadline.replace(" ", "T"));
+        const deadlineDate = new Date(deadline);
         const diffHours = (deadlineDate - now) / (1000 * 60 * 60);
         return diffHours <= 2 && diffHours > 0;
     };
 
     const isOverdue = (deadline) => {
+        if (!deadline) return false;
         const now = new Date();
-        const deadlineDate = new Date(deadline.replace(" ", "T"));
+        const deadlineDate = new Date(deadline);
         return deadlineDate < now;
     };
 
@@ -247,84 +207,6 @@ export default function KurirDashboard() {
                         <p className="text-slate-500 mt-1 ml-13">
                             Selamat datang! Kelola pengiriman APK Anda di sini.
                         </p>
-                    </div>
-
-                    {/* Notifikasi Button */}
-                    <div className="relative">
-                        <button
-                            onClick={() => setShowNotifPanel(!showNotifPanel)}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition shadow-sm"
-                        >
-                            <div className="relative">
-                                <Icon icon="mdi:bell" width={22} className="text-slate-600" />
-                                {notifBelumDibaca > 0 && (
-                                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
-                                        {notifBelumDibaca}
-                                    </span>
-                                )}
-                            </div>
-                            <span className="text-slate-700 font-medium">Notifikasi</span>
-                        </button>
-
-                        {/* Notifikasi Panel */}
-                        {showNotifPanel && (
-                            <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden">
-                                <div className="p-4 border-b border-slate-100 bg-slate-50">
-                                    <h3 className="font-semibold text-slate-800">Notifikasi</h3>
-                                </div>
-                                <div className="max-h-80 overflow-y-auto">
-                                    {notifikasi.length === 0 ? (
-                                        <div className="p-4 text-center text-slate-500">
-                                            Tidak ada notifikasi
-                                        </div>
-                                    ) : (
-                                        notifikasi.map((notif) => (
-                                            <div
-                                                key={notif.id}
-                                                className={`p-4 border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition ${!notif.dibaca ? "bg-blue-50/50" : ""
-                                                    }`}
-                                            >
-                                                <div className="flex items-start gap-3">
-                                                    <div
-                                                        className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${notif.tipe === "order_baru"
-                                                            ? "bg-blue-100"
-                                                            : notif.tipe === "reminder"
-                                                                ? "bg-yellow-100"
-                                                                : "bg-emerald-100"
-                                                            }`}
-                                                    >
-                                                        <Icon
-                                                            icon={
-                                                                notif.tipe === "order_baru"
-                                                                    ? "mdi:package-variant"
-                                                                    : notif.tipe === "reminder"
-                                                                        ? "mdi:alarm"
-                                                                        : "mdi:check"
-                                                            }
-                                                            width={16}
-                                                            className={
-                                                                notif.tipe === "order_baru"
-                                                                    ? "text-blue-600"
-                                                                    : notif.tipe === "reminder"
-                                                                        ? "text-yellow-600"
-                                                                        : "text-emerald-600"
-                                                            }
-                                                        />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-sm text-slate-700">{notif.pesan}</p>
-                                                        <p className="text-xs text-slate-400 mt-1">{notif.waktu}</p>
-                                                    </div>
-                                                    {!notif.dibaca && (
-                                                        <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                        )}
                     </div>
                 </div>
 
@@ -383,8 +265,9 @@ export default function KurirDashboard() {
                     ) : (
                         filteredTugas.map((tugasItem) => {
                             const statusStyle = getStatusStyle(tugasItem.status);
-                            const deadlineSoon = isDeadlineSoon(tugasItem.deadline);
-                            const overdue = isOverdue(tugasItem.deadline) && tugasItem.status !== "selesai";
+                            const deadline = tugasItem.pickup_scheduled_at;
+                            const deadlineSoon = isDeadlineSoon(deadline);
+                            const overdue = isOverdue(deadline) && mapStatus(tugasItem.status) !== "selesai";
 
                             return (
                                 <div
@@ -402,14 +285,7 @@ export default function KurirDashboard() {
                                                     </span>
                                                 )}
                                                 <span className="font-bold text-slate-800 text-lg">
-                                                    {tugasItem.nomorOrder}
-                                                </span>
-                                                <span
-                                                    className={`px-2.5 py-1 text-xs font-bold rounded-md border ${getPrioritasStyle(
-                                                        tugasItem.prioritas
-                                                    )}`}
-                                                >
-                                                    {tugasItem.prioritas === "tinggi" ? "🔥 Prioritas Tinggi" : "Normal"}
+                                                    {tugasItem.request_no}
                                                 </span>
                                             </div>
                                             <div
@@ -435,8 +311,8 @@ export default function KurirDashboard() {
                                                             key={idx}
                                                             className="flex items-center justify-between py-2 px-3 bg-slate-50 rounded-lg"
                                                         >
-                                                            <span className="text-slate-700 font-medium">{item.nama}</span>
-                                                            <span className="text-slate-500 font-bold">x{item.jumlah}</span>
+                                                            <span className="text-slate-700 font-medium">{item.item?.name || 'Unknown Item'}</span>
+                                                            <span className="text-slate-500 font-bold">x{item.qty}</span>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -451,16 +327,16 @@ export default function KurirDashboard() {
                                                     <div className="flex items-center gap-2 mb-2">
                                                         <Icon icon="mdi:account" className="text-slate-400" width={18} />
                                                         <span className="font-semibold text-slate-800">
-                                                            {tugasItem.koordinator.nama}
+                                                            {tugasItem.coordinator?.nama || '-'}
                                                         </span>
                                                     </div>
                                                     <div className="flex items-center gap-2 mb-2">
                                                         <Icon icon="mdi:phone" className="text-slate-400" width={18} />
                                                         <a
-                                                            href={`tel:${tugasItem.koordinator.telepon}`}
+                                                            href={`tel:${tugasItem.coordinator?.no_hp}`}
                                                             className="text-blue-600 hover:underline"
                                                         >
-                                                            {tugasItem.koordinator.telepon}
+                                                            {tugasItem.coordinator?.no_hp || '-'}
                                                         </a>
                                                     </div>
                                                     <div className="flex items-start gap-2">
@@ -470,15 +346,15 @@ export default function KurirDashboard() {
                                                             width={18}
                                                         />
                                                         <span className="text-slate-600 text-sm">
-                                                            {tugasItem.koordinator.alamat}
+                                                            {tugasItem.pickup_address || tugasItem.coordinator?.alamat || '-'}
                                                         </span>
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
 
-                                        {/* Catatan */}
-                                        {tugasItem.catatan && (
+                                        {/* Catatan (if any) */}
+                                        {tugasItem.note && (
                                             <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                                                 <div className="flex items-start gap-2">
                                                     <Icon
@@ -486,7 +362,7 @@ export default function KurirDashboard() {
                                                         className="text-yellow-600 flex-shrink-0"
                                                         width={18}
                                                     />
-                                                    <p className="text-sm text-yellow-800">{tugasItem.catatan}</p>
+                                                    <p className="text-sm text-yellow-800">{tugasItem.note}</p>
                                                 </div>
                                             </div>
                                         )}
@@ -496,7 +372,7 @@ export default function KurirDashboard() {
                                             <div className="flex flex-wrap items-center gap-4 text-sm">
                                                 <div className="flex items-center gap-1.5 text-slate-500">
                                                     <Icon icon="mdi:clock-outline" width={16} />
-                                                    <span>Order: {formatWaktu(tugasItem.tanggalOrder)}</span>
+                                                    <span>Order: {formatWaktu(tugasItem.created_at)}</span>
                                                 </div>
                                                 <div
                                                     className={`flex items-center gap-1.5 ${overdue
@@ -511,7 +387,7 @@ export default function KurirDashboard() {
                                                         width={16}
                                                     />
                                                     <span>
-                                                        Deadline: {formatWaktu(tugasItem.deadline)}
+                                                        Deadline: {formatWaktu(deadline)}
                                                         {overdue && " (Terlambat!)"}
                                                         {deadlineSoon && !overdue && " (Segera)"}
                                                     </span>
@@ -521,16 +397,21 @@ export default function KurirDashboard() {
                                             {/* Action Buttons */}
                                             <div className="flex items-center gap-2">
                                                 {/* Open Map */}
-                                                <button
+                                                <a
+                                                    href={`https://maps.google.com/?q=${encodeURIComponent(
+                                                        tugasItem.pickup_address || tugasItem.coordinator?.alamat || ''
+                                                    )}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
                                                     className="p-2.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
                                                     title="Buka Maps"
                                                 >
                                                     <Icon icon="mdi:map-marker-radius" width={20} />
-                                                </button>
+                                                </a>
 
                                                 {/* Call */}
                                                 <a
-                                                    href={`tel:${tugasItem.koordinator.telepon}`}
+                                                    href={`tel:${tugasItem.coordinator?.no_hp}`}
                                                     className="p-2.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
                                                     title="Hubungi"
                                                 >
@@ -547,7 +428,7 @@ export default function KurirDashboard() {
                                                 </button>
 
                                                 {/* Status Actions */}
-                                                {tugasItem.status === "pending" && (
+                                                {mapStatus(tugasItem.status) === "pending" && (
                                                     <button
                                                         onClick={() => handleConfirmAction(tugasItem, "dikirim")}
                                                         className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition"
@@ -557,7 +438,7 @@ export default function KurirDashboard() {
                                                     </button>
                                                 )}
 
-                                                {tugasItem.status === "dikirim" && (
+                                                {mapStatus(tugasItem.status) === "dikirim" && (
                                                     <button
                                                         onClick={() => handleConfirmAction(tugasItem, "selesai")}
                                                         className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition"
@@ -593,7 +474,7 @@ export default function KurirDashboard() {
                             <div className="p-6">
                                 <div className="bg-slate-50 rounded-lg p-4 mb-4">
                                     <p className="text-sm text-slate-500 mb-1">Nomor Order</p>
-                                    <p className="font-bold text-slate-800">{selectedTugas.nomorOrder}</p>
+                                    <p className="font-bold text-slate-800">{selectedTugas.request_no}</p>
                                 </div>
 
                                 <p className="text-slate-600">
@@ -645,7 +526,7 @@ export default function KurirDashboard() {
                         <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto border border-slate-200">
                             <div className="sticky top-0 p-5 border-b border-slate-200 bg-white flex items-center justify-between">
                                 <h3 className="text-lg font-bold text-slate-800">
-                                    Detail Order {selectedTugas.nomorOrder}
+                                    Detail Order {selectedTugas.request_no}
                                 </h3>
                                 <button
                                     onClick={() => {
@@ -683,8 +564,8 @@ export default function KurirDashboard() {
                                                 key={idx}
                                                 className="flex items-center justify-between py-2 px-3 bg-slate-50 rounded-lg border border-slate-200"
                                             >
-                                                <span className="text-slate-700 font-medium">{item.nama}</span>
-                                                <span className="text-slate-600 font-bold">x{item.jumlah}</span>
+                                                <span className="text-slate-700 font-medium">{item.item?.name || 'Unknown Item'}</span>
+                                                <span className="text-slate-600 font-bold">x{item.qty}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -697,11 +578,11 @@ export default function KurirDashboard() {
                                     </label>
                                     <div className="mt-2 bg-slate-50 rounded-lg p-4 border border-slate-200">
                                         <p className="font-semibold text-slate-800">
-                                            {selectedTugas.koordinator.nama}
+                                            {selectedTugas.coordinator?.nama || '-'}
                                         </p>
-                                        <p className="text-blue-600">{selectedTugas.koordinator.telepon}</p>
+                                        <p className="text-blue-600">{selectedTugas.coordinator?.no_hp || '-'}</p>
                                         <p className="text-slate-600 text-sm mt-1">
-                                            {selectedTugas.koordinator.alamat}
+                                            {selectedTugas.pickup_address || selectedTugas.coordinator?.alamat || '-'}
                                         </p>
                                     </div>
                                 </div>
@@ -713,21 +594,21 @@ export default function KurirDashboard() {
                                             Waktu Order
                                         </label>
                                         <p className="mt-1 text-slate-700">
-                                            {formatWaktu(selectedTugas.tanggalOrder)}
+                                            {formatWaktu(selectedTugas.created_at)}
                                         </p>
                                     </div>
                                     <div>
                                         <label className="text-xs font-bold text-slate-500 uppercase">Deadline</label>
-                                        <p className="mt-1 text-slate-700">{formatWaktu(selectedTugas.deadline)}</p>
+                                        <p className="mt-1 text-slate-700">{formatWaktu(selectedTugas.pickup_scheduled_at)}</p>
                                     </div>
                                 </div>
 
                                 {/* Catatan */}
-                                {selectedTugas.catatan && (
+                                {selectedTugas.note && (
                                     <div>
                                         <label className="text-xs font-bold text-slate-500 uppercase">Catatan</label>
                                         <p className="mt-1 text-slate-700 bg-yellow-50 p-3 rounded-lg border border-yellow-200">
-                                            {selectedTugas.catatan}
+                                            {selectedTugas.note}
                                         </p>
                                     </div>
                                 )}
@@ -736,7 +617,7 @@ export default function KurirDashboard() {
                             <div className="p-5 border-t border-slate-200 bg-slate-50 flex gap-3">
                                 <a
                                     href={`https://maps.google.com/?q=${encodeURIComponent(
-                                        selectedTugas.koordinator.alamat
+                                        selectedTugas.pickup_address || selectedTugas.coordinator?.alamat || ''
                                     )}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
@@ -746,7 +627,7 @@ export default function KurirDashboard() {
                                     Buka Maps
                                 </a>
                                 <a
-                                    href={`tel:${selectedTugas.koordinator.telepon}`}
+                                    href={`tel:${selectedTugas.coordinator?.no_hp}`}
                                     className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition"
                                 >
                                     <Icon icon="mdi:phone" width={18} />

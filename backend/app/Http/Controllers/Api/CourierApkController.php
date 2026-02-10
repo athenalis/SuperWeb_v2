@@ -3,16 +3,19 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\User;
-use App\Models\UserCredential;
 use App\Models\CourierApk;
 use App\Helpers\PhoneHelper;
+use Maatwebsite\Excel\Facades\Excel;
+use App\Exports\KurirApkExport;
+use App\Models\UserCredential;
 use App\Helpers\ActivityLogger;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Crypt;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Validator;
 
 class CourierApkController extends Controller
@@ -37,10 +40,6 @@ class CourierApkController extends Controller
             ->first();
     }
 
-    /**
-     * Admin APK only guard + ambil paslon_id.
-     * Return array [adminApkRow, paslonId] atau response json jika error.
-     */
     private function requireAdminApkAndPaslon()
     {
         $actor = Auth::user();
@@ -72,10 +71,32 @@ class CourierApkController extends Controller
         return [$adminApk, $paslonId];
     }
 
+    /**
+     * Normalize nomor HP:
+     * - input boleh: 08xxxx, 628xxxx, +628xxxx
+     * - 021 ditolak
+     * - simpan: 08xxxx
+     */
+    private function normalizeNoHpOrFail(?string $raw)
+    {
+        $normalized = PhoneHelper::normalize($raw);
+
+        if (!$normalized) {
+            return response()->json([
+                'status' => false,
+                'errors' => [
+                    'no_hp' => [PhoneHelper::lastError() ?? 'Nomor HP tidak valid']
+                ]
+            ], 422);
+        }
+
+        return $normalized;
+    }
+
     public function index(Request $request)
     {
         $guard = $this->requireAdminApkAndPaslon();
-        if ($guard instanceof \Illuminate\Http\JsonResponse) return $guard;
+        if ($guard instanceof JsonResponse) return $guard;
         [, $paslonId] = $guard;
 
         $query = CourierApk::query()
@@ -118,7 +139,7 @@ class CourierApkController extends Controller
     public function show($id)
     {
         $guard = $this->requireAdminApkAndPaslon();
-        if ($guard instanceof \Illuminate\Http\JsonResponse) return $guard;
+        if ($guard instanceof JsonResponse) return $guard;
         [, $paslonId] = $guard;
 
         $kurir = CourierApk::with(['user' => fn($q) => $q->withTrashed()])->find($id);
@@ -145,24 +166,21 @@ class CourierApkController extends Controller
     public function store(Request $request)
     {
         $guard = $this->requireAdminApkAndPaslon();
-        if ($guard instanceof \Illuminate\Http\JsonResponse) return $guard;
-        [$adminApk, $paslonId] = $guard;
+        if ($guard instanceof JsonResponse) return $guard;
+        [, $paslonId] = $guard;
 
-        $request->merge([
-            'no_hp' => PhoneHelper::normalize($request->no_hp),
-        ]);
+        // normalize no_hp dulu supaya yang disimpan pasti 08...
+        $normalized = $this->normalizeNoHpOrFail($request->no_hp);
+        if ($normalized instanceof JsonResponse) return $normalized;
+        $request->merge(['no_hp' => $normalized]);
 
         $validator = Validator::make($request->all(), [
-            'nama' => ['required', 'string', 'max:255', 'regex:/^[^0-9]+$/'],
-            'no_hp' => [
-                'required',
-                'digits_between:10,13',
-                function ($attribute, $value, $fail) {
-                    if (str_starts_with($value, '021')) $fail('Nomor telepon rumah (021) tidak diperbolehkan');
-                }
-            ],
+            'nama'  => ['required', 'string', 'max:255', 'regex:/^[^0-9]+$/'],
+            // setelah normalize harus selalu 08 + digit total 10-13
+            'no_hp' => ['required', 'regex:/^08\d{8,11}$/'],
         ], [
-            'nama.regex' => 'Nama tidak boleh mengandung angka'
+            'nama.regex' => 'Nama tidak boleh mengandung angka',
+            'no_hp.regex' => 'Nomor HP harus format 08xxxxxxxxxx (10-13 digit)',
         ]);
 
         if ($validator->fails()) {
@@ -202,7 +220,7 @@ class CourierApkController extends Controller
                 'user_id'   => $userKurir->id,
                 'paslon_id' => $paslonId,
                 'nama'      => $request->nama,
-                'no_hp'     => $request->no_hp,
+                'no_hp'     => $request->no_hp, // ✅ sudah 08...
                 'status'    => 'inactive',
             ]);
 
@@ -239,7 +257,7 @@ class CourierApkController extends Controller
     public function update(Request $request, $id)
     {
         $guard = $this->requireAdminApkAndPaslon();
-        if ($guard instanceof \Illuminate\Http\JsonResponse) return $guard;
+        if ($guard instanceof JsonResponse) return $guard;
         [, $paslonId] = $guard;
 
         $kurir = CourierApk::with(['user' => fn($q) => $q->withTrashed()])->find($id);
@@ -257,22 +275,20 @@ class CourierApkController extends Controller
             ], 403);
         }
 
+        // normalize only if no_hp dikirim
         if ($request->filled('no_hp')) {
-            $request->merge(['no_hp' => PhoneHelper::normalize($request->no_hp)]);
+            $normalized = $this->normalizeNoHpOrFail($request->no_hp);
+            if ($normalized instanceof JsonResponse) return $normalized;
+            $request->merge(['no_hp' => $normalized]);
         }
 
         $validator = Validator::make($request->all(), [
             'nama'   => ['required', 'string', 'max:255', 'regex:/^[^0-9]+$/'],
-            'no_hp'  => [
-                'required',
-                'digits_between:10,13',
-                function ($attribute, $value, $fail) {
-                    if (str_starts_with($value, '021')) $fail('Nomor telepon rumah (021) tidak diperbolehkan');
-                }
-            ],
+            'no_hp'  => ['required', 'regex:/^08\d{8,11}$/'],
             'status' => 'sometimes|in:inactive,active',
         ], [
-            'nama.regex' => 'Nama tidak boleh mengandung angka'
+            'nama.regex' => 'Nama tidak boleh mengandung angka',
+            'no_hp.regex' => 'Nomor HP harus format 08xxxxxxxxxx (10-13 digit)',
         ]);
 
         if ($validator->fails()) {
@@ -289,7 +305,7 @@ class CourierApkController extends Controller
 
             $kurir->update([
                 'nama'   => $request->nama,
-                'no_hp'  => $request->no_hp,
+                'no_hp'  => $request->no_hp, // ✅ sudah 08...
                 'status' => $request->input('status', $kurir->status),
             ]);
 
@@ -370,7 +386,7 @@ class CourierApkController extends Controller
     public function destroy($id)
     {
         $guard = $this->requireAdminApkAndPaslon();
-        if ($guard instanceof \Illuminate\Http\JsonResponse) return $guard;
+        if ($guard instanceof JsonResponse) return $guard;
         [, $paslonId] = $guard;
 
         $kurir = CourierApk::withTrashed()
@@ -421,14 +437,14 @@ class CourierApkController extends Controller
     public function active()
     {
         $guard = $this->requireAdminApkAndPaslon();
-        if ($guard instanceof \Illuminate\Http\JsonResponse) return $guard;
+        if ($guard instanceof JsonResponse) return $guard;
         [, $paslonId] = $guard;
 
         $data = CourierApk::query()
             ->select('id', 'user_id', 'paslon_id', 'nama', 'no_hp', 'status')
             ->whereNull('deleted_at')
             ->where('status', 'active')
-            ->where('paslon_id', $paslonId) 
+            ->where('paslon_id', $paslonId)
             ->orderBy('nama')
             ->get();
 
@@ -436,5 +452,43 @@ class CourierApkController extends Controller
             'status' => true,
             'data'   => $data
         ]);
+    }
+
+    public function exportKurir(Request $request)
+    {
+        $actor = Auth::user();
+        $roleSlug = $this->userRoleSlug($actor);
+
+        if ($roleSlug !== 'admin_apk') {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Hanya admin_apk yang dapat export kurir apk'
+            ], 403);
+        }
+
+        $password = $request->password;
+        if (!password_verify($password, $actor->password)) {
+            return response()->json(['message' => 'Password salah'], 422);
+        }
+
+        $guard = $this->requireAdminApkAndPaslon();
+        if ($guard instanceof JsonResponse) return $guard;
+        [, $paslonId] = $guard;
+
+        $nomorUrut = (int) (DB::table('paslons')->where('id', $paslonId)->value('nomor_urut') ?? 0);
+        $suffix = $nomorUrut
+            ? str_pad((string)$nomorUrut, 2, '0', STR_PAD_LEFT)
+            : str_pad((string)$paslonId, 2, '0', STR_PAD_LEFT);
+
+        $fileName = "KURIR_APK_{$suffix}.xlsx";
+
+        $response = Excel::download(
+            new KurirApkExport((int)$paslonId),
+            $fileName
+        );
+
+        $response->headers->set('Cache-Control', 'no-store, no-cache');
+        $response->headers->set('Access-Control-Expose-Headers', 'Content-Disposition');
+        return $response;
     }
 }

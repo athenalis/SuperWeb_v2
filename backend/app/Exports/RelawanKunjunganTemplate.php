@@ -4,7 +4,7 @@ namespace App\Exports;
 
 use Maatwebsite\Excel\Concerns\WithHeadings;
 
-class RelawanTemplate implements WithHeadings
+class RelawanKunjunganTemplate implements WithHeadings
 {
     public function headings(): array
     {

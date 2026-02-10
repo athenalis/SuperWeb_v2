@@ -69,6 +69,15 @@ const platformConfig = {
   X: { icon: "ri:twitter-x-line", color: "rgb(83, 84, 88)" },
 };
 
+function formatRoleLabel(role = "") {
+  return role
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const role = localStorage.getItem("role") || "Admin";
@@ -242,7 +251,7 @@ export default function Dashboard() {
   }, [contentSummary.per_platform, isMobile, isTablet]);
 
   // =========================================================================
-  // Stacked bar chart
+  // Stacked bar chart - WARNA BIRU BERTINGKAT
   // =========================================================================
   useEffect(() => {
     api
@@ -303,11 +312,8 @@ export default function Dashboard() {
               stack: "total",
               barWidth: isMobile ? "40%" : isTablet ? "50%" : "65%",
               itemStyle: {
-                color: "#FF0000",
+                color: "#00319c", // Biru sangat gelap
                 borderRadius: [6, 0, 0, 6],
-                shadowColor: "rgba(255, 0, 0, 0.3)",
-                shadowBlur: 8,
-                shadowOffsetY: 2,
               },
               label: {
                 show: true,
@@ -332,7 +338,9 @@ export default function Dashboard() {
               name: "Tidak Setuju",
               type: "bar",
               stack: "total",
-              itemStyle: { color: "#FACC15", shadowColor: "rgba(250, 204, 21, 0.3)", shadowBlur: 8, shadowOffsetY: 2 },
+              itemStyle: { 
+                color: "#1754da", // Biru gelap
+              },
               label: {
                 show: true,
                 position: "inside",
@@ -356,7 +364,9 @@ export default function Dashboard() {
               name: "Setuju",
               type: "bar",
               stack: "total",
-              itemStyle: { color: "#2563EB", shadowColor: "rgba(37, 99, 235, 0.3)", shadowBlur: 8, shadowOffsetY: 2 },
+              itemStyle: { 
+                color: "#3d7fea", // Biru medium
+              },
               label: {
                 show: true,
                 position: "inside",
@@ -380,7 +390,10 @@ export default function Dashboard() {
               name: "Sangat Setuju",
               type: "bar",
               stack: "total",
-              itemStyle: { color: "#22C55E", borderRadius: [0, 6, 6, 0], shadowColor: "rgba(34, 197, 94, 0.3)", shadowBlur: 8, shadowOffsetY: 2 },
+              itemStyle: { 
+                color: "#7cacf8", // Biru terang
+                borderRadius: [0, 6, 6, 0],
+              },
               label: {
                 show: true,
                 position: "inside",
@@ -417,8 +430,41 @@ export default function Dashboard() {
     setVisitPieOption({
       tooltip: {
         show: true,
-        trigger: 'item',
-        formatter: '{b}: {c} orang ({d}%)'
+        trigger: "item",
+        confine: true, // biar ga keluar card
+        backgroundColor: "rgba(255,255,255,0.98)",
+        borderColor: "#e2e8f0",
+        borderWidth: 1,
+        padding: [10, 12],
+        extraCssText:
+          "border-radius:12px; box-shadow:0 10px 30px rgba(2,6,23,.12);",
+        textStyle: {
+          color: "#0f172a",
+          fontSize: isMobile ? 11 : 12,
+        },
+        formatter: (p) => {
+          const val = (p?.value ?? 0).toLocaleString("id-ID");
+          const percent = `${p?.percent ?? 0}%`;
+          const name = p?.name ?? "-";
+          const marker = p?.marker ?? "";
+
+          return `
+      <div style="min-width:180px">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+          <div style="display:flex; align-items:center; gap:8px; font-weight:700;">
+            ${marker}
+            <span>${name}</span>
+          </div>
+          <span style="font-weight:800; color:#0f172a">${percent}</span>
+        </div>
+        <div style="margin-top:6px; height:1px; background:#e2e8f0;"></div>
+        <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
+          <span style="color:#64748b; font-size:11px;">Total</span>
+          <span style="font-weight:800; color:#0f172a">${val} orang</span>
+        </div>
+      </div>
+    `;
+        },
       },
       legend: {
         bottom: isMobile ? 5 : isTablet ? 8 : 10,
@@ -568,7 +614,7 @@ export default function Dashboard() {
               <Icon icon="solar:home-2-bold" width={isMobile ? 20 : isTablet ? 24 : 28} />
             </div>
             <div>
-              <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold">Selamat Datang, {role}</h1>
+              <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold">Selamat Datang, {formatRoleLabel(role)}</h1>
               <p className="text-xs sm:text-sm md:text-base text-blue-100 mt-0.5 sm:mt-1">Sistem Manajemen SuperWeb</p>
             </div>
           </div>
@@ -685,7 +731,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-indigo-600 via-indigo-500 to-purple-600 text-white p-4 sm:p-6 md:p-8 rounded-xl md:rounded-2xl shadow-lg relative overflow-hidden">
+        <div className="bg-gradient-to-br from-blue-600 via-blue-500 to-blue-400 text-white p-4 sm:p-6 md:p-8 rounded-xl md:rounded-2xl shadow-lg relative overflow-hidden">
           <div className="absolute top-0 right-0 w-36 h-36 sm:w-44 sm:h-44 md:w-48 md:h-48 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2" />
           <div className="absolute bottom-0 left-0 w-32 h-32 sm:w-36 sm:h-36 md:w-40 md:h-40 bg-white/10 rounded-full translate-y-1/2 -translate-x-1/2" />
           <div className="relative z-10">
@@ -694,7 +740,7 @@ export default function Dashboard() {
                 <div className="text-3xl sm:text-4xl md:text-5xl font-bold mb-1 sm:mb-2">
                   <AnimateNumber value={contentSummary.comparison.posted || 0} /> / <AnimateNumber value={contentSummary.comparison.target || 0} />
                 </div>
-                <div className="text-xs sm:text-sm md:text-base text-indigo-100 font-medium">Total Postingan Konten</div>
+                <div className="text-xs sm:text-sm md:text-base text-blue-100 font-medium">Total Postingan Konten</div>
               </div>
               <div className="w-12 h-12 sm:w-13 sm:h-13 md:w-14 md:h-14 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
                 <Icon icon="solar:chart-2-bold" width={isMobile ? 24 : isTablet ? 26 : 28} />
@@ -704,7 +750,7 @@ export default function Dashboard() {
             <div className="space-y-4 sm:space-y-5">
               <div>
                 <div className="flex justify-between text-xs sm:text-sm mb-2 font-medium">
-                  <span className="text-indigo-100">Target</span>
+                  <span className="text-blue-100">Target</span>
                   <span>{contentSummary.comparison.target || 0}</span>
                 </div>
                 <div className="h-2.5 sm:h-3 bg-white/20 rounded-full overflow-hidden backdrop-blur-sm">
@@ -714,7 +760,7 @@ export default function Dashboard() {
 
               <div>
                 <div className="flex justify-between text-xs sm:text-sm mb-2 font-medium">
-                  <span className="text-indigo-100">Posted</span>
+                  <span className="text-blue-100">Posted</span>
                   <span>{contentSummary.comparison.posted || 0}</span>
                 </div>
                 <div className="h-2.5 sm:h-3 bg-white/20 rounded-full overflow-hidden backdrop-blur-sm">
@@ -736,7 +782,7 @@ export default function Dashboard() {
                     : 0}
                   %
                 </div>
-                <div className="text-xs sm:text-sm text-indigo-100 font-medium">Tercapai dari Target</div>
+                <div className="text-xs sm:text-sm text-blue-100 font-medium">Tercapai dari Target</div>
               </div>
             </div>
           </div>

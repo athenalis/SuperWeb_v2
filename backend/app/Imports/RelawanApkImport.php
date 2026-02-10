@@ -50,7 +50,7 @@ class RelawanApkImport implements ToCollection, WithHeadingRow
         $headers = $this->mapHeader($rows->first());
 
         // ✅ wilayah tidak wajib lagi
-        $required = ['nama','nik','no_hp','alamat','tps'];
+        $required = ['nama','nik','no_hp','alamat'];
         $missing = array_values(array_filter($required, fn($k) => !isset($headers[$k])));
         if ($missing) {
             throw new \Exception("Header Excel tidak lengkap/typo. Wajib ada: " . implode(', ', $missing));
@@ -71,7 +71,6 @@ class RelawanApkImport implements ToCollection, WithHeadingRow
                 'nik'    => 'required|digits:16',
                 'no_hp'  => 'required|digits_between:10,13',
                 'alamat' => 'required|string|max:255',
-                'tps'    => 'required|string|max:3',
             ]);
 
             if ($v->fails()) {
@@ -206,7 +205,7 @@ class RelawanApkImport implements ToCollection, WithHeadingRow
                         'nik' => $data['nik'],
                         'no_hp' => $data['no_hp'],
                         'alamat' => $data['alamat'],
-                        'tps' => $data['tps'],
+                        'tps' => null, 
 
                         'is_kunjungan' => 0,
                         'is_apk' => 1,

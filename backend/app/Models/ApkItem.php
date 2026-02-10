@@ -20,13 +20,11 @@ class ApkItem extends Model
         'budget_total',
         'budget_note',
         'description',
-        'is_active',
     ];
 
     protected $casts = [
         'stock' => 'decimal:3',
         'budget_total' => 'decimal:2',
-        'is_active' => 'boolean',
     ];
 
     public function paslon(): BelongsTo
@@ -41,7 +39,7 @@ class ApkItem extends Model
 
     public function unit(): BelongsTo
     {
-        return $this->belongsTo(Unit::class, 'unit_id');
+        return $this->belongsTo(UnitItem::class, 'unit_id');
     }
 
     public function stock(): HasOne
