@@ -13,7 +13,6 @@ class MapVisitController extends Controller
     {
         $user = Auth::user();
 
-        // admin_paslon only (role_id = 2)
         if (!$user || (int) $user->role_id !== 2) {
             return response()->json([
                 'success' => false,
@@ -21,7 +20,6 @@ class MapVisitController extends Controller
             ], 403);
         }
 
-        // ambil paslon_id dari user (sesuaikan jika relasinya beda)
         $paslonId = $user->paslon_id ?? optional($user->adminPaslon)->paslon_id ?? null;
 
         if (!$paslonId) {
@@ -86,7 +84,6 @@ class MapVisitController extends Controller
                 'relawans.nama',
                 'kk.nama',
 
-                // ✅ wajib digroup kalau MySQL strict
                 'relawans.village_code',
                 'vg.village',
 

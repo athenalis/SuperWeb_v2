@@ -15,7 +15,6 @@ class Cors
      */
     public function handle(Request $request, Closure $next): Response
     {
-        // Handle preflight OPTIONS request
         if ($request->isMethod('OPTIONS')) {
             return response('', 200)
                 ->header('Access-Control-Allow-Origin', '*')
@@ -26,7 +25,6 @@ class Cors
 
         $response = $next($request);
 
-        // Add CORS headers to all responses
         $response->headers->set('Access-Control-Allow-Origin', '*');
         $response->headers->set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
         $response->headers->set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');

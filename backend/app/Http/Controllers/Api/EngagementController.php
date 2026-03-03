@@ -14,7 +14,6 @@ class EngagementController extends Controller
 {
     public function analyticContent($contentPlanId)
     {
-        // Cache untuk 5 menit per content plan
         $cacheKey = "analytic_content_{$contentPlanId}";
 
         return Cache::remember($cacheKey, 300, function () use ($contentPlanId) {
@@ -35,7 +34,6 @@ class EngagementController extends Controller
                 ->select('id', 'title', 'status_id')
                 ->findOrFail($contentPlanId);
 
-            // ❌ Belum diposting
             if ($contentPlan->status->label !== 'Diposting') {
                 return response()->json([
                     'content' => [
@@ -61,9 +59,6 @@ class EngagementController extends Controller
                 $platformId = $cp->platform->id;
                 $engagements = $cp->engagements;
 
-                /* =========================
-                 * PLATFORMS AVAILABLE
-                 * ========================= */
                 if (!isset($platformsAvailable[$platformId])) {
                     $platformsAvailable[$platformId] = [
                         'platform_id' => $platformId,
@@ -71,9 +66,6 @@ class EngagementController extends Controller
                     ];
                 }
 
-                /* =========================
-                 * REPORTS
-                 * ========================= */
                 if (!isset($reports[$platformId])) {
                     $reports[$platformId] = [
                         'platform_id' => $platformId,
@@ -96,9 +88,6 @@ class EngagementController extends Controller
                     ])->values(),
                 ];
 
-                /* =========================
-                 * CHART
-                 * ========================= */
                 foreach ($engagements as $e) {
                     $chart[] = [
                         'platform_id' => $platformId,
@@ -140,13 +129,12 @@ class EngagementController extends Controller
             'views'               => 'required|integer|min:0',
         ]);
 
-        // Pastikan content_platform_id memang milik content plan ini + ambil posting_date
         $cp = ContentPlatform::with('contentPlan:id,posting_date')
             ->where('id', $validated['content_platform_id'])
             ->where('content_plan_id', $contentPlanId)
             ->firstOrFail();
 
-        $postingDate = optional($cp->contentPlan)->posting_date; // cast => Carbon (date)
+        $postingDate = optional($cp->contentPlan)->posting_date;
 
         if (!$postingDate) {
             return response()->json([
@@ -158,14 +146,12 @@ class EngagementController extends Controller
         $end   = \Carbon\Carbon::parse($validated['end_date'])->startOfDay();
         $post  = \Carbon\Carbon::parse($postingDate)->startOfDay();
 
-        // ✅ RULE BARU: start/end tidak boleh < posting_date
         if ($start->lt($post) || $end->lt($post)) {
             return response()->json([
                 'message' => "Start date dan End date tidak boleh sebelum tanggal posting ({$post->format('Y-m-d')})"
             ], 422);
         }
 
-        // 🔒 Validasi overlap periode tanggal
         $hasOverlap = $this->checkOverlap(
             $cp->id,
             $start->format('Y-m-d'),
@@ -188,7 +174,6 @@ class EngagementController extends Controller
                 'views'               => $validated['views'],
             ]);
 
-            // 🧹 Clear cache setelah insert
             $this->clearAnalyticCache((int) $contentPlanId);
 
             DB::commit();
@@ -227,7 +212,6 @@ class EngagementController extends Controller
 
         $cp = $engagement->contentPlatform;
 
-        // 🔒 Pastikan engagement milik content plan ini
         if (!$cp || $cp->content_plan_id !== (int) $contentPlanId) {
             abort(404);
         }
@@ -244,14 +228,12 @@ class EngagementController extends Controller
         $end   = \Carbon\Carbon::parse($validated['end_date'])->startOfDay();
         $post  = \Carbon\Carbon::parse($postingDate)->startOfDay();
 
-        // ✅ RULE BARU: start/end tidak boleh < posting_date
         if ($start->lt($post) || $end->lt($post)) {
             return response()->json([
                 'message' => "Start date dan End date tidak boleh sebelum tanggal posting ({$post->format('Y-m-d')})"
             ], 422);
         }
 
-        // 🔒 VALIDASI OVERLAP TANGGAL (exclude dirinya sendiri)
         $hasOverlap = $this->checkOverlap(
             $cp->id,
             $start->format('Y-m-d'),
@@ -265,11 +247,6 @@ class EngagementController extends Controller
             ], 422);
         }
 
-        /* =====================================================
-     * 🔥 VALIDASI KRONOLOGIS (LIKES & VIEWS)
-     * ===================================================== */
-
-        // ⬅️ Periode SEBELUMNYA
         $previousEngagement = Engagement::where('content_platform_id', $cp->id)
             ->where('end_date', '<', $start->format('Y-m-d'))
             ->where('id', '!=', $engagement->id)
@@ -292,7 +269,6 @@ class EngagementController extends Controller
             }
         }
 
-        // ➡️ Periode SETELAHNYA
         $nextEngagement = Engagement::where('content_platform_id', $cp->id)
             ->where('start_date', '>', $end->format('Y-m-d'))
             ->where('id', '!=', $engagement->id)
@@ -315,10 +291,6 @@ class EngagementController extends Controller
             }
         }
 
-        /* =====================================================
-     * ✅ UPDATE DATA
-     * ===================================================== */
-
         DB::beginTransaction();
         try {
             $engagement->update([
@@ -328,7 +300,6 @@ class EngagementController extends Controller
                 'views'      => $validated['views'],
             ]);
 
-            // 🧹 Clear cache analytics
             $this->clearAnalyticCache((int) $contentPlanId);
 
             DB::commit();
@@ -355,7 +326,6 @@ class EngagementController extends Controller
     
     public function getDisabledDates(int $contentPlatformId, ?int $excludeEngagementId = null)
     {
-        // Cache untuk 5 menit per content platform
         $cacheKey = "disabled_dates_{$contentPlatformId}_{$excludeEngagementId}";
 
         return Cache::remember($cacheKey, 300, function () use ($contentPlatformId, $excludeEngagementId) {
@@ -413,13 +383,11 @@ class EngagementController extends Controller
     {
         Cache::forget("analytic_content_{$contentPlanId}");
 
-        // Clear juga cache disabled dates untuk semua content platforms
         $contentPlatformIds = ContentPlatform::where('content_plan_id', $contentPlanId)
             ->pluck('id');
 
         foreach ($contentPlatformIds as $cpId) {
             Cache::forget("disabled_dates_{$cpId}_");
-            // Clear untuk semua kemungkinan excludeEngagementId
             $engagementIds = Engagement::where('content_platform_id', $cpId)->pluck('id');
             foreach ($engagementIds as $eId) {
                 Cache::forget("disabled_dates_{$cpId}_{$eId}");

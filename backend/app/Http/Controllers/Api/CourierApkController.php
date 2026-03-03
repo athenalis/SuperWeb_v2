@@ -71,12 +71,6 @@ class CourierApkController extends Controller
         return [$adminApk, $paslonId];
     }
 
-    /**
-     * Normalize nomor HP:
-     * - input boleh: 08xxxx, 628xxxx, +628xxxx
-     * - 021 ditolak
-     * - simpan: 08xxxx
-     */
     private function normalizeNoHpOrFail(?string $raw)
     {
         $normalized = PhoneHelper::normalize($raw);
@@ -169,14 +163,12 @@ class CourierApkController extends Controller
         if ($guard instanceof JsonResponse) return $guard;
         [, $paslonId] = $guard;
 
-        // normalize no_hp dulu supaya yang disimpan pasti 08...
         $normalized = $this->normalizeNoHpOrFail($request->no_hp);
         if ($normalized instanceof JsonResponse) return $normalized;
         $request->merge(['no_hp' => $normalized]);
 
         $validator = Validator::make($request->all(), [
             'nama'  => ['required', 'string', 'max:255', 'regex:/^[^0-9]+$/'],
-            // setelah normalize harus selalu 08 + digit total 10-13
             'no_hp' => ['required', 'regex:/^08\d{8,11}$/'],
         ], [
             'nama.regex' => 'Nama tidak boleh mengandung angka',
@@ -220,7 +212,7 @@ class CourierApkController extends Controller
                 'user_id'   => $userKurir->id,
                 'paslon_id' => $paslonId,
                 'nama'      => $request->nama,
-                'no_hp'     => $request->no_hp, // ✅ sudah 08...
+                'no_hp'     => $request->no_hp,
                 'status'    => 'inactive',
             ]);
 
@@ -275,7 +267,6 @@ class CourierApkController extends Controller
             ], 403);
         }
 
-        // normalize only if no_hp dikirim
         if ($request->filled('no_hp')) {
             $normalized = $this->normalizeNoHpOrFail($request->no_hp);
             if ($normalized instanceof JsonResponse) return $normalized;
@@ -305,7 +296,7 @@ class CourierApkController extends Controller
 
             $kurir->update([
                 'nama'   => $request->nama,
-                'no_hp'  => $request->no_hp, // ✅ sudah 08...
+                'no_hp'  => $request->no_hp,
                 'status' => $request->input('status', $kurir->status),
             ]);
 

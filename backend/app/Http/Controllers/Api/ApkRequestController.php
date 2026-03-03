@@ -15,10 +15,6 @@ use Illuminate\Validation\Rule;
 
 class ApkRequestController extends Controller
 {
-    /* =====================================================
-       Helpers
-       ===================================================== */
-
     private function roleName($user): ?string
     {
         $user->loadMissing('role');
@@ -110,10 +106,6 @@ class ApkRequestController extends Controller
         ];
     }
 
-    /* =====================================================
-       LIST & DETAIL
-       ===================================================== */
-
     public function index(Request $request)
     {
         $user = auth()->user();
@@ -135,7 +127,7 @@ class ApkRequestController extends Controller
             $kurir = $this->requireKurir($user);
             $query->where('courier_id', $kurir->id);
         } else {
-            // admin_apk / admin_paslon -> lihat semua
+            // admin_apk / admin_paslon
         }
 
         return response()->json([
@@ -161,22 +153,11 @@ class ApkRequestController extends Controller
             abort_if((int) $apkRequest->courier_id !== (int) $kurir->id, 403, 'Tidak punya akses');
         }
 
-        // Fix: Explicitly check for admin_apk role
-        // if ($role === 'admin_apk') {
-        //     $this->requireAdminApk($user);
-        //     // Admin APK has full access to view, so no additional checks needed here
-        //     // unless you want to restrict to specific assignments if multi-tenancy exists
-        // }
-
         return response()->json([
             'status' => true,
             'data'   => $apkRequest
         ]);
     }
-
-    /* =====================================================
-       KOORDINATOR
-       ===================================================== */
 
     public function store(Request $request)
     {
@@ -232,7 +213,6 @@ class ApkRequestController extends Controller
 
             $apkRequest->setStatusByCode('SUBMITTED', (int) $user->id, 'Request dibuat');
 
-            // penting: fresh + load relasi biar notif & response lengkap
             $fresh = $apkRequest->fresh([
                 'status:id,code,name',
                 'items.item.bentuk',
@@ -242,7 +222,6 @@ class ApkRequestController extends Controller
                 'admin:id,nama,no_hp',
             ]);
 
-            // Notif ke SEMUA Admin APK (Active atau Assigned + Role Based)
             $adminApkUserIds = AdminApk::whereNull('deleted_at')
                 ->where('status', 'active')
                 ->pluck('user_id')
@@ -251,7 +230,6 @@ class ApkRequestController extends Controller
             $roleAdminApk = \App\Models\Role::where('role', 'admin_apk')->first();
             $roleAdminUserIds = $roleAdminApk ? User::where('role_id', $roleAdminApk->id)->pluck('id')->toArray() : [];
 
-            // Gabungkan ID dari tabel admin_apks dan user dengan role admin_apk
             $targetUserIds = array_unique(array_merge($adminApkUserIds, $roleAdminUserIds));
 
             if (!empty($targetUserIds)) {
@@ -314,7 +292,6 @@ class ApkRequestController extends Controller
             $apkRequest->setStatusByCode('REVISED', (int) $user->id, 'Items direvisi');
         });
 
-        // (opsional) notif ke admin: revised
         $fresh = ApkRequest::with($this->withListRelations())->find($id);
         if ($fresh && $fresh->admin?->user_id) {
             $adminUser = User::find($fresh->admin->user_id);
@@ -350,35 +327,26 @@ class ApkRequestController extends Controller
             $apkRequest->setStatusByCode('SUBMITTED', (int) $user->id, 'Resubmitted');
         });
 
-        // notif ke admin: submitted lagi (opsional)
-        // notif ke SEMUA Admin APK (Assignments + Role Fallback)
         $fresh = ApkRequest::with($this->withListRelations())->find($id);
 
         $usersToNotify = collect();
 
-        // 1. Assigned Admin
         if ($fresh && $fresh->admin && $fresh->admin->user) {
             $usersToNotify->push($fresh->admin->user);
         }
 
-        // 2. Role Fallback
         $adminRole = \Illuminate\Support\Facades\DB::table('roles')->where('role', 'admin_apk')->first();
         if ($adminRole) {
             $roleUsers = User::where('role_id', $adminRole->id)->get();
             $usersToNotify = $usersToNotify->merge($roleUsers);
         }
 
-        // 3. Notify Unique
         $usersToNotify->unique('id')->each(function ($usr) use ($fresh) {
             $usr->notify(new ApkRequestNotification('apk_request_revised', $fresh));
         });
 
         return response()->json(['status' => true, 'message' => 'Request berhasil diajukan ulang']);
     }
-
-    /* =====================================================
-       ADMIN APK
-       ===================================================== */
 
     public function approve(Request $request, $id)
     {
@@ -426,28 +394,24 @@ class ApkRequestController extends Controller
                     'qty'             => $it->qty,
                     'note'            => 'OUT untuk request_no ' . ($apkRequest->request_no ?? $apkRequest->id),
                     'total_cost'      => null,
-                    'created_by'      => (int) $user->id,              // admin yang approve
-                    'coordinator_id'  => (int) $apkRequest->coordinator_id, // ✅ koor yg request
+                    'created_by'      => (int) $user->id,
+                    'coordinator_id'  => (int) $apkRequest->coordinator_id,
                     'created_at'      => now(),
                 ]);
             }
         });
 
-        // Hapus notifikasi terkait request ini untuk user yang sedang login (Admin)
-        // Agar "langsung ilang notifnya" dari inbox
         $user->notifications()
             ->where('data->apk_request_id', $id)
             ->delete();
 
         $fresh = ApkRequest::with($this->withDetailRelations())->find($id);
 
-        // notif ke koordinator
         $coordinatorUser = User::whereHas('apkKoordinator', fn($q) => $q->where('id', $fresh->coordinator_id))->first();
         if ($coordinatorUser) {
             $coordinatorUser->notify(new ApkRequestNotification('apk_request_approved', $fresh));
         }
 
-        // (opsional) notif ke kurir (yang dipilih)
         $courierUser = User::whereHas('apkKurir', fn($q) => $q->where('id', $fresh->courier_id))->first();
         if ($courierUser) {
             $courierUser->notify(new ApkRequestNotification('apk_request_assigned', $fresh));
@@ -483,7 +447,6 @@ class ApkRequestController extends Controller
 
         $apkRequest->setStatusByCode('REJECTED', (int) $user->id, $request->message);
 
-        // Hapus notifikasi terkait request ini untuk user yang sedang login (Admin)
         $user->notifications()
             ->where('data->apk_request_id', $id)
             ->delete();
@@ -497,10 +460,6 @@ class ApkRequestController extends Controller
 
         return response()->json(['status' => true, 'message' => 'Request ditolak']);
     }
-
-    /* =====================================================
-       KURIR
-       ===================================================== */
 
     public function pickup($id)
     {
@@ -523,7 +482,6 @@ class ApkRequestController extends Controller
 
         $apkRequest->setStatusByCode('PICKED_UP', (int) $user->id, 'Pesanan diambil kurir');
 
-        // notif ke koordinator (opsional)
         $fresh = ApkRequest::with($this->withDetailRelations())->find($id);
         $coordinatorUser = User::whereHas('apkKoordinator', fn($q) => $q->where('id', $fresh->coordinator_id))->first();
         if ($coordinatorUser) {
@@ -554,7 +512,6 @@ class ApkRequestController extends Controller
 
         $apkRequest->setStatusByCode('ARRIVED', (int) $user->id, 'Barang sampai tujuan');
 
-        // notif ke koordinator (opsional)
         $fresh = ApkRequest::with($this->withDetailRelations())->find($id);
         $coordinatorUser = User::whereHas('apkKoordinator', fn($q) => $q->where('id', $fresh->coordinator_id))->first();
         if ($coordinatorUser) {
@@ -563,10 +520,6 @@ class ApkRequestController extends Controller
 
         return response()->json(['status' => true, 'message' => 'Konfirmasi sampai berhasil']);
     }
-
-    /* =====================================================
-       KOORDINATOR FINAL
-       ===================================================== */
 
     public function delivered($id)
     {
@@ -589,7 +542,6 @@ class ApkRequestController extends Controller
 
         $apkRequest->setStatusByCode('DELIVERED', (int) $user->id, 'Barang diterima koordinator');
 
-        // notif ke admin (opsional)
         $fresh = ApkRequest::with($this->withDetailRelations())->find($id);
         if ($fresh && $fresh->admin?->user_id) {
             $adminUser = User::find($fresh->admin->user_id);
@@ -613,7 +565,6 @@ class ApkRequestController extends Controller
         $coor = $this->requireKoordinator($user);
         $apkRequest = ApkRequest::where('id', $id)->where('coordinator_id', $coor->id)->firstOrFail();
 
-        // Allow delete only if not approved yet
         if (in_array($apkRequest->status?->code, ['APPROVED', 'PICKED_UP', 'ARRIVED', 'DELIVERED'])) {
             return response()->json([
                 'status' => false,

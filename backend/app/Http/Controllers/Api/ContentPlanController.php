@@ -204,7 +204,6 @@ class ContentPlanController extends Controller
                 'budget_content'  => $validated['budget_content'],
             ]);
 
-            // ADS
             if ($request->boolean('is_ads') && !empty($validated['ads_by_platform'])) {
                 $adsData = [];
                 foreach ($validated['ads_by_platform'] as $platformId => $ads) {
@@ -294,9 +293,6 @@ class ContentPlanController extends Controller
 
             $this->validateContentTypes($validated['content_types']);
 
-            // =========================
-            // Update main content plan
-            // =========================
             $contentPlan->update([
                 'title'         => $validated['title'],
                 'posting_date'  => $validated['posting_date'],
@@ -305,9 +301,6 @@ class ContentPlanController extends Controller
                 'refund_budget' => (bool) ($validated['refund_budget'] ?? false),
             ]);
 
-            // =========================
-            // Platforms (reset + insert)
-            // =========================
             ContentPlatform::where('content_plan_id', $id)->delete();
 
             $platformRows = [];
@@ -324,33 +317,24 @@ class ContentPlanController extends Controller
             }
             ContentPlatform::insert($platformRows);
 
-            // =========================
-            // Budget (upsert)
-            // =========================
             ContentBudget::updateOrCreate(
                 ['content_plan_id' => $id],
                 ['budget_content'  => $validated['budget_content']]
             );
 
-            // =========================
-            // ADS rules sesuai kebutuhan kamu
-            // =========================
-            $canceledStatusId = 5; // <-- ganti kalau ID "Dibatalkan" beda
+            $canceledStatusId = 5;
             $isCanceled = ((int) $validated['status_id'] === $canceledStatusId);
             $refundRequested = (bool) ($validated['refund_budget'] ?? false);
 
             $isAdsProvided = $request->has('is_ads');
 
-            // ✅ HANYA boleh force delete ads kalau BELUM dibatalkan
             if (!$isCanceled && $isAdsProvided) {
                 $isAds = $request->boolean('is_ads');
 
-                // reset ads lama -> hard delete
                 ContentPlatformAd::withTrashed()
                     ->where('content_plan_id', $id)
                     ->forceDelete();
 
-                // kalau is_ads true -> insert ads baru
                 if ($isAds && !empty($validated['ads_by_platform'])) {
                     $adsData = [];
                     foreach ($validated['ads_by_platform'] as $platformId => $ads) {
@@ -369,20 +353,8 @@ class ContentPlanController extends Controller
                 }
             }
 
-            // ✅ Kalau DIBATALKAN & refund_budget = false → jangan sentuh ads (keep)
-            // (jadi di sini tidak ada aksi apa pun untuk ads)
-
-            // =========================
-            // Influencers (sync)
-            // =========================
             $contentPlan->influencers()->sync($validated['influencer_ids'] ?? []);
 
-            // =========================
-            // Refund logic:
-            // - hanya kalau DIBATALKAN & refund_budget=true
-            // - budget_content + budget_ads dihitung lalu balikin ke total_budget
-            // - lalu SOFT DELETE budget & ads (bukan force)
-            // =========================
             $shouldRefund = ($isCanceled && $refundRequested);
 
             if ($shouldRefund && !$alreadyRefunded) {
@@ -400,7 +372,6 @@ class ContentPlanController extends Controller
                     ->where('paslon_id', $paslonId)
                     ->increment('amount', $refundAmount);
 
-                // ✅ sesuai rule kamu: SOFT DELETE, bukan force delete
                 ContentBudget::where('content_plan_id', $id)->delete();
                 ContentPlatformAd::where('content_plan_id', $id)->delete();
 
@@ -448,7 +419,7 @@ class ContentPlanController extends Controller
             return DB::table('platforms')
                 ->leftJoin('content_platforms', 'platforms.id', '=', 'content_platforms.platform_id')
                 ->leftJoin('content_plans', 'content_plans.id', '=', 'content_platforms.content_plan_id')
-                ->where('content_plans.paslon_id', $paslonId) // ✅ scope paslon
+                ->where('content_plans.paslon_id', $paslonId)
                 ->select('platforms.name', DB::raw('COUNT(DISTINCT content_plans.id) as total'))
                 ->groupBy('platforms.name')
                 ->get();

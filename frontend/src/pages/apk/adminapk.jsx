@@ -191,33 +191,29 @@ export default function AdminApk({ onBackToGudang }) {
   return (
     <div className="min-h-screen bg-slate-50 border border-slate-200 rounded-xl p-6 md:p-8 space-y-6">
       {/* NAVBAR / HEADER BAR */}
-      <div className="px-4 py-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-3">
-            {/* BACK */}
-            <button
-              type="button"
-              onClick={goBack}
-              className="mt-1 inline-flex items-center justify-center w-10 h-10 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition"
-              title="Kembali"
-              aria-label="Kembali"
-            >
-              <Icon icon="mdi:arrow-left" width={22} />
-            </button>
-
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-blue-900 flex items-center gap-3">
-                Data Admin APK
-              </h1>
-              <p className="font-semibold text-slate-500 mt-1">Kelola admin APK</p>
-            </div>
-          </div>
-
-          <button onClick={() => setShowAddModal(true)} className={actionBtnClass} type="button">
-            <Icon icon="mdi:account-plus-outline" width={20} />
-            Tambah Admin APK
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <button
+            type="button"
+            onClick={goBack}
+            className="mt-1 p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition"
+            title="Kembali"
+          >
+            <Icon icon="mdi:arrow-left" width={22} className="text-slate-700" />
           </button>
+
+          <div>
+            <h1 className="text-3xl font-bold text-blue-900 flex items-center gap-3">
+              Data Admin APK
+            </h1>
+            <p className="text-slate-500 mt-1">Kelola admin APK</p>
+          </div>
         </div>
+
+        <button onClick={() => setShowAddModal(true)} className={actionBtnClass} type="button">
+          <Icon icon="mdi:account-plus-outline" width={20} />
+          Tambah Admin APK
+        </button>
       </div>
 
       {/* CARD LIST */}

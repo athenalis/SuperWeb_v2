@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
+use App\Models\User;
 use App\Models\Paslon;
 use Illuminate\Http\Request;
+use App\Models\UserCredential;
 use Illuminate\Support\Facades\DB;
+use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Storage;
 
 class PaslonController extends Controller
@@ -82,6 +84,7 @@ class PaslonController extends Controller
             'parties',
             'contentPlans',
             'totalBudget',
+            'adminPaslon',
         ])->find($id);
 
         if (!$paslon) {
@@ -93,47 +96,36 @@ class PaslonController extends Controller
 
         DB::transaction(function () use ($paslon) {
 
-            // 1) detach pivot parties
             $paslon->parties()->detach();
 
-            // 2) hapus contentPlans (hasMany)
             if ($paslon->contentPlans && $paslon->contentPlans->count() > 0) {
                 foreach ($paslon->contentPlans as $cp) {
-                    $cp->delete(); // kalau CP pakai SoftDeletes dan mau hard: $cp->forceDelete()
+                    $cp->delete(); 
                 }
             }
 
-            // 3) hapus totalBudget (hasOne)
             if ($paslon->totalBudget) {
-                $paslon->totalBudget->delete(); // kalau mau hard: $paslon->totalBudget->forceDelete()
+                $paslon->totalBudget->delete(); 
             }
 
-            // 4) FORCE DELETE admin_paslon + user admin paslon
-            $adminPaslon = $paslon->adminPaslon()->withTrashed()->first();
+            $adminPaslon = $paslon->adminPaslon()->first();
 
             if ($adminPaslon) {
-                // ambil user admin paslon walau sudah soft-deleted
-                $adminUser = \App\Models\User::withTrashed()->find($adminPaslon->user_id);
+                $adminUser = User::withTrashed()->find($adminPaslon->user_id);
 
                 if ($adminUser) {
-                    // kalau ada tabel credential yg nyangkut ke users
-                    // sesuaikan kalau nama model/tabel beda
-                    \App\Models\UserCredential::where('user_id', $adminUser->id)->delete();
+                    UserCredential::where('user_id', $adminUser->id)->delete();
 
-                    // ✅ ini yang kamu mau: user-nya beneran hilang
                     $adminUser->forceDelete();
                 }
 
-                // ✅ ini yang kamu mau: admin_paslons beneran hilang
-                $adminPaslon->forceDelete();
+                $adminPaslon->delete();
             }
 
-            // 5) hapus file image kalau ada
             if (!empty($paslon->image)) {
                 Storage::disk('public')->delete($paslon->image);
             }
 
-            // 6) paslon tetep delete biasa (soft/hard tergantung model)
             $paslon->delete();
 
             return true;

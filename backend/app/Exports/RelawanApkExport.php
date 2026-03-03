@@ -28,7 +28,7 @@ class RelawanApkExport extends DefaultValueBinder implements
     WithColumnFormatting,
     WithCustomValueBinder
 {
-    protected string $mode; // koordinator | admin_paslon | admin_apk
+    protected string $mode; // koordinator, admin_paslon, admin_apk
     protected ?int $koorApkId;
     protected ?int $paslonId;
     protected ?string $namaKoordinator;
@@ -51,41 +51,14 @@ class RelawanApkExport extends DefaultValueBinder implements
 
     private function isAdminMode(): bool
     {
-        // admin_paslon / admin_apk sama perlakuannya
         return in_array($this->mode, ['admin_paslon', 'admin_apk'], true);
     }
 
     public function bindValue(Cell $cell, $value)
     {
-        /**
-         * Paksa kolom tertentu jadi TEXT supaya:
-         * - NIK tidak jadi scientific notation
-         * - No HP aman
-         * - TPS aman
-         *
-         * Kolom berubah tergantung mode (karena admin mode punya 2 kolom tambahan di depan)
-         */
         if ($this->isAdminMode()) {
-            // A: Koordinator
-            // B: Kelurahan Penugasan
-            // C: Nama Relawan
-            // D: NIK
-            // E: Email
-            // F: Password
-            // G: No HP
-            // H: Alamat
-            // I: TPS
-            // ... dst
             $textCols = ['D', 'G', 'I'];
         } else {
-            // mode koordinator (lama):
-            // A: Nama Relawan
-            // B: NIK
-            // C: Email
-            // D: Password
-            // E: No HP
-            // F: Alamat
-            // G: TPS
             $textCols = ['B', 'E', 'G'];
         }
 
@@ -99,20 +72,11 @@ class RelawanApkExport extends DefaultValueBinder implements
 
     public function startCell(): string
     {
-        // tetap pertahankan mekanisme lama
         return $this->mode === 'koordinator' ? 'A4' : 'A1';
     }
 
     public function collection()
     {
-        /**
-         * Tetap pertahankan mekanisme lama:
-         * - koordinator => filter koor_apk_id
-         * - admin => filter paslon_id
-         *
-         * Tambahan untuk admin mode:
-         * - join koordinator APK untuk ambil: nama koordinator + kelurahan penugasan
-         */
         if ($this->isAdminMode()) {
             $query = Relawan::query()
                 ->leftJoin('apk_koordinators as ak', 'ak.id', '=', 'relawans.koor_apk_id')
@@ -161,7 +125,6 @@ class RelawanApkExport extends DefaultValueBinder implements
                 });
         }
 
-        // ===== mode koordinator (kode lama dipertahankan) =====
         $query = Relawan::query()
             ->with(['user', 'village', 'city', 'district', 'province'])
             ->whereNull('deleted_at')
@@ -170,7 +133,6 @@ class RelawanApkExport extends DefaultValueBinder implements
         if ($this->mode === 'koordinator') {
             $query->where('koor_apk_id', $this->koorApkId);
         } else {
-            // fallback: admin_paslon lama (walau sekarang admin mode sudah ditangani di atas)
             $query->where('paslon_id', $this->paslonId);
         }
 
@@ -240,16 +202,16 @@ class RelawanApkExport extends DefaultValueBinder implements
     {
         if ($this->isAdminMode()) {
             return [
-                'D' => NumberFormat::FORMAT_TEXT, // NIK
-                'G' => NumberFormat::FORMAT_TEXT, // No HP
-                'I' => NumberFormat::FORMAT_TEXT, // TPS
+                'D' => NumberFormat::FORMAT_TEXT,
+                'G' => NumberFormat::FORMAT_TEXT,
+                'I' => NumberFormat::FORMAT_TEXT,
             ];
         }
 
         return [
-            'B' => NumberFormat::FORMAT_TEXT, // NIK
-            'E' => NumberFormat::FORMAT_TEXT, // No HP
-            'G' => NumberFormat::FORMAT_TEXT, // TPS
+            'B' => NumberFormat::FORMAT_TEXT,
+            'E' => NumberFormat::FORMAT_TEXT,
+            'G' => NumberFormat::FORMAT_TEXT,
         ];
     }
 
@@ -257,17 +219,14 @@ class RelawanApkExport extends DefaultValueBinder implements
     {
         return [
             AfterSheet::class => function (AfterSheet $event) {
-                // ✅ FIX: koordinator startCell A4, jadi headerRow harus 4
                 $headerRow = $this->mode === 'koordinator' ? 4 : 1;
 
-                // lastCol menyesuaikan mode
                 $lastCol = $this->isAdminMode() ? 'N' : 'I';
 
                 $event->sheet->getStyle("A{$headerRow}:{$lastCol}{$headerRow}")
                     ->getFont()->setBold(true);
 
                 if ($this->mode === 'koordinator') {
-                    // tetap pertahankan info koordinator di atas tabel
                     $event->sheet->setCellValue('A1', 'Koordinator :');
                     $event->sheet->setCellValue('B1', $this->namaKoordinator ?? '-');
                     $event->sheet->setCellValue('A2', 'Kelurahan :');

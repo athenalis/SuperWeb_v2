@@ -23,7 +23,7 @@ class KoordinatorApkExport implements
     WithColumnFormatting
 {
     protected int $paslonId;
-    protected string $mode; // admin_paslon | admin_apk
+    protected string $mode; // admin_paslon, admin_apk
     protected ?string $paslonSuffix;
 
     public function __construct(int $paslonId, string $mode = 'admin_paslon', ?string $paslonSuffix = null)
@@ -98,8 +98,8 @@ class KoordinatorApkExport implements
     public function columnFormats(): array
     {
         return [
-            'B' => NumberFormat::FORMAT_TEXT, // NIK
-            'E' => NumberFormat::FORMAT_TEXT, // No HP
+            'B' => NumberFormat::FORMAT_TEXT,
+            'E' => NumberFormat::FORMAT_TEXT,
         ];
     }
 

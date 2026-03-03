@@ -7,9 +7,6 @@ use Illuminate\Http\Request;
 
 class NotificationController extends Controller
 {
-    /**
-     * Get all notifications for the authenticated user.
-     */
     public function index()
     {
         $notifications = auth()->user()->notifications()->paginate(15);
@@ -21,9 +18,6 @@ class NotificationController extends Controller
         ]);
     }
 
-    /**
-     * Mark all notifications as read.
-     */
     public function markAllAsRead()
     {
         auth()->user()->unreadNotifications->markAsRead();
@@ -34,9 +28,6 @@ class NotificationController extends Controller
         ]);
     }
 
-    /**
-     * Mark a single notification as read.
-     */
     public function markAsRead($id)
     {
         $notification = auth()->user()->notifications()->findOrFail($id);
@@ -48,9 +39,6 @@ class NotificationController extends Controller
         ]);
     }
 
-    /**
-     * Delete a notification.
-     */
     public function destroy($id)
     {
         $notification = auth()->user()->notifications()->findOrFail($id);

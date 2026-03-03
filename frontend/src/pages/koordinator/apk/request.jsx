@@ -6,6 +6,15 @@ import { toast } from "react-hot-toast";
 import api from "../../../lib/axios";
 import KoordinatorApkRequestView from "../../inbox/KoordinatorApkRequestView";
 
+const formatRibuan = (value) => {
+    if (!value) return "";
+    return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+};
+
+const parseRibuan = (value) => {
+    return value.replace(/\./g, "");
+};
+
 export default function RequestApk() {
     const queryClient = useQueryClient();
 
@@ -324,11 +333,16 @@ export default function RequestApk() {
                                             required
                                         >
                                             <option value="">Pilih Nama Barang</option>
-                                            {filteredItems.map((item) => (
-                                                <option key={item.id} value={item.id}>
-                                                    {item.name} {item.stock > 0 ? `(Stok: ${item.stock})` : "(Stok habis)"}
-                                                </option>
-                                            ))}
+                                            {filteredItems.map((item) => {
+                                                const qty = Math.floor(Number(item?.stock?.qty_current ?? 0));
+                                                const qtyLabel = qty.toLocaleString("id-ID"); // 8080 -> 8.080
+
+                                                return (
+                                                    <option key={item.id} value={item.id}>
+                                                        {item.name} {qty > 0 ? `(Stok: ${qtyLabel})` : "(Stok habis)"}
+                                                    </option>
+                                                );
+                                            })}
                                         </select>
                                         <Icon
                                             icon="mdi:chevron-down"
@@ -375,25 +389,25 @@ export default function RequestApk() {
                                     <label className="block text-md font-medium text-slate-700 mb-1">
                                         Jumlah <span className="text-red-500">*</span>
                                     </label>
-                                    <input
-                                        type="number"
-                                        className="w-full border border-slate-300 rounded-lg px-6 py-3 pr-12 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        value={itemForm.qty}
-                                        onChange={(e) => setItemForm({ ...itemForm, qty: e.target.value })}
-                                        placeholder="0"
-                                        min="1"
-                                        step="1"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-md font-medium text-slate-700 mb-1">Keterangan (Opsional)</label>
+
                                     <input
                                         type="text"
+                                        inputMode="numeric"
                                         className="w-full border border-slate-300 rounded-lg px-6 py-3 pr-12 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        value={itemForm.note}
-                                        onChange={(e) => setItemForm({ ...itemForm, note: e.target.value })}
-                                        placeholder="Detail tambahan..."
+                                        value={formatRibuan(itemForm.qty)}
+                                        onChange={(e) => {
+                                            const raw = parseRibuan(e.target.value);
+
+                                            // hanya angka
+                                            if (!/^\d*$/.test(raw)) return;
+
+                                            setItemForm({
+                                                ...itemForm,
+                                                qty: raw,
+                                            });
+                                        }}
+                                        placeholder="0"
+                                        required
                                     />
                                 </div>
                             </div>
@@ -448,7 +462,9 @@ export default function RequestApk() {
                                                     {item.note && <div className="text-xs text-slate-500 mt-0.5">{item.note}</div>}
                                                 </td>
                                                 <td className="p-3 text-slate-600">{item.bentuk_name}</td>
-                                                <td className="p-3 font-semibold text-slate-800">{item.qty}</td>
+                                                <td className="p-3 font-semibold text-slate-800">
+                                                    {formatRibuan(item.qty)}
+                                                </td>
                                                 <td className="p-3 text-slate-600">{item.unit_name}</td>
                                                 <td className="p-3 text-right">
                                                     <button

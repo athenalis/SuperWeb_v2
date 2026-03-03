@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import api from "../../../lib/axios";
 import { Icon } from "@iconify/react";
@@ -19,7 +19,7 @@ export default function Relawan() {
   const [successMessage, setSuccessMessage] = useState("");
   const [exporting, setExporting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  
+
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [exportPassword, setExportPassword] = useState("");
   const [showExportPassword, setShowExportPassword] = useState(false);
@@ -36,7 +36,7 @@ export default function Relawan() {
   // ================= FILTER STATE =================
   // Menggabungkan NIK, Nama, TPS menjadi satu 'keyword'
   const [filters, setFilters] = useState({
-    keyword: "", 
+    keyword: "",
     city_code: "",
     district_code: "",
     village_code: "",
@@ -62,18 +62,17 @@ export default function Relawan() {
   };
 
   // ================= FETCH DATA =================
-const fetchRelawan = async () => {
-  try {
-    const res = await api.get("/relawan/kunjungan", { params: activeFilters });
-    const result = res.data?.data;
-    if (Array.isArray(result)) return result;
-    return result?.data || [];
-  } catch (err) {
-    console.log("RELAWAN ERROR:", err?.response?.status, err?.response?.data);
-    throw err; // biar react-query set isError
-  }
-};
-
+  const fetchRelawan = async () => {
+    try {
+      const res = await api.get("/relawan/kunjungan", { params: activeFilters });
+      const result = res.data?.data;
+      if (Array.isArray(result)) return result;
+      return result?.data || [];
+    } catch (err) {
+      console.log("RELAWAN ERROR:", err?.response?.status, err?.response?.data);
+      throw err; // biar react-query set isError
+    }
+  };
 
   const {
     data: relawan = [],
@@ -93,10 +92,10 @@ const fetchRelawan = async () => {
   // Logika Gabungan (Search Box tunggal)
   const semanticFiltered = relawan.filter((item) => {
     // Ambil keyword dari activeFilters (yang sudah di-apply) atau filters (realtime)
-    // Disarankan menggunakan filters.keyword untuk UX pencarian realtime, 
+    // Disarankan menggunakan filters.keyword untuk UX pencarian realtime,
     // tapi jika harus klik tombol filter dulu, gunakan activeFilters.keyword.
     // Di sini kita gunakan filters.keyword agar sesuai UX umum, namun datanya disinkronkan.
-    
+
     // NOTE: Kode asli menggunakan `filters` untuk client filtering.
     const searchKeyword = filters.keyword.toLowerCase().trim();
 
@@ -111,10 +110,7 @@ const fetchRelawan = async () => {
   });
 
   const totalPage = Math.ceil(semanticFiltered.length / perPage);
-  const paginatedData = semanticFiltered.slice(
-    (page - 1) * perPage,
-    page * perPage
-  );
+  const paginatedData = semanticFiltered.slice((page - 1) * perPage, page * perPage);
 
   const pages = Array.from({ length: totalPage }, (_, i) => i + 1);
 
@@ -138,59 +134,60 @@ const fetchRelawan = async () => {
 
   // ================= ACTIONS (EXPORT/IMPORT/DELETE) =================
   // ... (Bagian Export, Import, dan Delete tidak berubah logic-nya, hanya dirapikan)
-  
+
   const handleConfirmExport = async () => {
-  if (!exportPassword) return toast.error("Masukkan password terlebih dahulu");
-  const toastId = "export-relawan";
+    if (!exportPassword) return toast.error("Masukkan password terlebih dahulu");
+    const toastId = "export-relawan";
 
-  try {
-    setExporting(true);
-    toast.loading("Menyiapkan file Excel...", { id: toastId });
+    try {
+      setExporting(true);
+      toast.loading("Menyiapkan file Excel...", { id: toastId });
 
-    const res = await api.post(
-      "/relawan/export-kunjungan",
-      { password: exportPassword },
-      {
-        responseType: "blob",
-        validateStatus: (status) => status < 500, // biar 4xx tetap masuk ke try
+      const res = await api.post(
+        "/relawan/export-kunjungan",
+        { password: exportPassword },
+        {
+          responseType: "blob",
+          validateStatus: (status) => status < 500, // biar 4xx tetap masuk ke try
+        }
+      );
+
+      // ✅ kalau ternyata backend ngirim JSON error, baca dulu
+      const contentType = res.headers["content-type"];
+      if (contentType?.includes("application/json")) {
+        const text = await res.data.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { message: text };
+        }
+        throw new Error(data?.message || "Export gagal");
       }
-    );
 
-    // ✅ kalau ternyata backend ngirim JSON error, baca dulu
-    const contentType = res.headers["content-type"];
-    if (contentType?.includes("application/json")) {
-      const text = await res.data.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = { message: text };
-      }
-      throw new Error(data?.message || "Export gagal");
+      // ✅ kalau beneran file excel
+      const url = window.URL.createObjectURL(res.data);
+      const link = document.createElement("a");
+      link.href = url;
+
+      const filename =
+        res.headers["content-disposition"]
+          ?.split("filename=")[1]
+          ?.replace(/"/g, "") || "relawan_kunjungan.xlsx";
+
+      link.setAttribute("download", filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      toast.success("Export berhasil", { id: toastId });
+      closeExportModal();
+    } catch (err) {
+      toast.error(err?.message || "Gagal export", { id: toastId }); // ✅ pasti ada teks
+    } finally {
+      setExporting(false);
     }
-
-    // ✅ kalau beneran file excel
-    const url = window.URL.createObjectURL(res.data);
-    const link = document.createElement("a");
-    link.href = url;
-
-    const filename =
-      res.headers["content-disposition"]?.split("filename=")[1]?.replace(/"/g, "") ||
-      "relawan_kunjungan.xlsx";
-
-    link.setAttribute("download", filename);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    toast.success("Export berhasil", { id: toastId });
-    closeExportModal();
-  } catch (err) {
-    toast.error(err?.message || "Gagal export", { id: toastId }); // ✅ pasti ada teks
-  } finally {
-    setExporting(false);
-  }
-};
+  };
 
   const closeExportModal = () => {
     setShowPasswordModal(false);
@@ -206,7 +203,9 @@ const fetchRelawan = async () => {
     formData.append("file", file);
 
     try {
-      const res = await api.post("/relawan/import/kunjungan", formData, { headers: { "Content-Type": "multipart/form-data" } });
+      const res = await api.post("/relawan/import/kunjungan", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
       setImportResult(res.data.data);
       if (res.data.data.success_count > 0) {
         setSuccessMessage(`${res.data.data.success_count} relawan berhasil ditambahkan!`);
@@ -241,27 +240,153 @@ const fetchRelawan = async () => {
     onError: () => toast.error("Gagal menghapus relawan", { id: "delete-relawan" }),
   });
 
-  // ===== PROMOTE RELAWAN KUNJUNGAN -> RELAWAN APK =====
-  const [promoteTarget, setPromoteTarget] = useState(null);
+  // =====================================================================
+  // ✅ DOUBLE JOB (KUNJUNGAN -> APK) : Backend-driven eligibility
+  // - GET  /relawan/double-job/{id}/eligible-apk  -> list koordinator + message
+  // - PATCH /relawan/double-job/{id} body { koor_apk_id }
+  // =====================================================================
 
-  const promoteToRelawanApk = async (id) => {
-    const res = await api.patch(`/double-job/${id}`);
+  const [promoteTarget, setPromoteTarget] = useState(null);
+  const [selectedKoorApkId, setSelectedKoorApkId] = useState("");
+
+  // cache status per relawan (biar tombol & badge gak local)
+  // shape: { [id]: { loading:boolean, eligible:boolean, message:string, koors:Array } }
+  const [eligibleMap, setEligibleMap] = useState({});
+
+  const fetchEligibleApk = async (id) => {
+    // endpoint backend kamu: GET /api/relawan/double-job/{id}/eligible-apk
+    // di FE baseURL kemungkinan sudah /api
+    const res = await api.get(`/relawan/double-job/${id}/eligible-apk`);
+    const payload = res?.data || {};
+
+    const koors = Array.isArray(payload?.data) ? payload.data : [];
+    const message = payload?.message || "";
+
+    // eligible di FE: punya kandidat koor APK (karena PATCH butuh koor_apk_id)
+    // kalau relawan tidak eligible / sudah double job / beda aturan -> backend biasanya data: [] dengan message
+    const eligible = koors.length > 0;
+
+    return { eligible, message, koors, raw: payload };
+  };
+
+  // Prefetch eligibility untuk data yang tampil (paginated) biar tombol bisa disable dari backend
+  useEffect(() => {
+    if (!Array.isArray(paginatedData) || paginatedData.length === 0) return;
+
+    const idsToFetch = paginatedData
+      .map((x) => x?.id)
+      .filter(Boolean)
+      .filter((id) => eligibleMap[id] == null);
+
+    if (idsToFetch.length === 0) return;
+
+    // tandai loading dulu
+    setEligibleMap((prev) => {
+      const next = { ...prev };
+      idsToFetch.forEach((id) => {
+        next[id] = { loading: true, eligible: false, message: "", koors: [] };
+      });
+      return next;
+    });
+
+    (async () => {
+      await Promise.all(
+        idsToFetch.map(async (id) => {
+          try {
+            const r = await fetchEligibleApk(id);
+            setEligibleMap((prev) => ({
+              ...prev,
+              [id]: { loading: false, eligible: r.eligible, message: r.message, koors: r.koors },
+            }));
+          } catch (err) {
+            const msg = err?.response?.data?.message || "Gagal cek eligibility";
+            setEligibleMap((prev) => ({
+              ...prev,
+              [id]: { loading: false, eligible: false, message: msg, koors: [] },
+            }));
+          }
+        })
+      );
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paginatedData]);
+
+  const promoteToRelawanApk = async ({ id, koor_apk_id }) => {
+    const res = await api.patch(`/relawan/double-job/${id}`, { koor_apk_id });
     return res.data;
   };
 
   const promoteMutation = useMutation({
-    mutationFn: (id) => promoteToRelawanApk(id),
+    mutationFn: ({ id, koor_apk_id }) => promoteToRelawanApk({ id, koor_apk_id }),
     onMutate: () => toast.loading("Mengubah jadi Relawan APK...", { id: "promote-apk" }),
-    onSuccess: () => {
+    onSuccess: async (_data, vars) => {
       toast.success("Berhasil jadi Relawan APK", { id: "promote-apk" });
       queryClient.invalidateQueries(["relawan"]);
+
+      // refresh eligibility untuk item itu supaya button/badge akurat setelah promote
+      if (vars?.id) {
+        setEligibleMap((prev) => ({
+          ...prev,
+          [vars.id]: { ...(prev[vars.id] || {}), loading: true },
+        }));
+        try {
+          const r = await fetchEligibleApk(vars.id);
+          setEligibleMap((prev) => ({
+            ...prev,
+            [vars.id]: { loading: false, eligible: r.eligible, message: r.message, koors: r.koors },
+          }));
+        } catch (err) {
+          const msg = err?.response?.data?.message || "Gagal refresh eligibility";
+          setEligibleMap((prev) => ({
+            ...prev,
+            [vars.id]: { loading: false, eligible: false, message: msg, koors: [] },
+          }));
+        }
+      }
+
       setPromoteTarget(null);
+      setSelectedKoorApkId("");
     },
     onError: (err) => {
       const msg = err?.response?.data?.message || "Gagal mengubah role";
       toast.error(msg, { id: "promote-apk" });
     },
   });
+
+  // saat modal promote dibuka: sinkronkan dropdown dari backend
+  useEffect(() => {
+    if (!promoteTarget?.id) return;
+
+    const id = promoteTarget.id;
+    const cached = eligibleMap?.[id];
+
+    // kalau belum ada / masih loading, fetch now
+    if (!cached || cached.loading) {
+      (async () => {
+        try {
+          setEligibleMap((prev) => ({
+            ...prev,
+            [id]: { loading: true, eligible: false, message: "", koors: [] },
+          }));
+          const r = await fetchEligibleApk(id);
+          setEligibleMap((prev) => ({
+            ...prev,
+            [id]: { loading: false, eligible: r.eligible, message: r.message, koors: r.koors },
+          }));
+        } catch (err) {
+          const msg = err?.response?.data?.message || "Gagal cek eligibility";
+          setEligibleMap((prev) => ({
+            ...prev,
+            [id]: { loading: false, eligible: false, message: msg, koors: [] },
+          }));
+        }
+      })();
+    }
+
+    // reset pilihan setiap buka modal
+    setSelectedKoorApkId("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [promoteTarget]);
 
   const downloadTemplate = async () => {
     try {
@@ -281,6 +406,110 @@ const fetchRelawan = async () => {
   const roleId = Number(localStorage.getItem("role_id"));
   const isAdminPaslon = roleId === 2;
 
+  // helper: status untuk tiap row
+  const getRowEligibility = (item) => {
+    const id = item?.id;
+    const cached = id ? eligibleMap?.[id] : null;
+
+    const isApk = Number(item?.is_apk || 0) === 1;
+
+    // prioritas: sudah APK -> disable
+    if (isApk) {
+      return {
+        loading: false,
+        disabled: true,
+        reason: "Relawan sudah menjadi Relawan APK",
+        badge: true,
+        koors: [],
+      };
+    }
+
+    // kalau belum ada cache, anggap loading (disable dulu biar aman)
+    if (!cached) {
+      return {
+        loading: true,
+        disabled: true,
+        reason: "Memeriksa eligibility...",
+        badge: false,
+        koors: [],
+      };
+    }
+
+    // kalau masih loading
+    if (cached.loading) {
+      return {
+        loading: true,
+        disabled: true,
+        reason: "Memeriksa eligibility...",
+        badge: false,
+        koors: [],
+      };
+    }
+
+    // eligible kalau ada koor
+    const eligible = !!cached.eligible;
+    const message = cached.message || "";
+
+    // kalau tidak eligible, reason pakai message
+    // khusus case koor kosong: kita paksa message standar sesuai permintaan
+    const isNoKoorMsg = !eligible;
+    const reason = isNoKoorMsg
+      ? message || "Tidak ada koordinator yang 1 wilayah tersedia"
+      : "Eligible";
+
+    return {
+      loading: false,
+      disabled: !eligible,
+      reason,
+      badge: false,
+      koors: Array.isArray(cached.koors) ? cached.koors : [],
+    };
+  };
+
+  const PromoteApkButton = ({ item, className, iconOnly = true }) => {
+    const st = getRowEligibility(item);
+    const disabled = isAdminPaslon || st.disabled;
+
+    const title = isAdminPaslon
+      ? "Admin Paslon tidak bisa promote"
+      : st.disabled
+      ? st.reason
+      : "Jadikan Relawan APK";
+
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          if (disabled) {
+            if (!isAdminPaslon) toast.error(title);
+            return;
+          }
+          setPromoteTarget(item);
+        }}
+        disabled={disabled}
+        title={title}
+        className={
+          className ||
+          `w-9 h-9 flex items-center justify-center text-green-700 rounded-lg border border-green-600 hover:bg-green-800 hover:text-white hover:border-green-800 transition-all shadow-sm hover:shadow-green-500/30 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-green-700`
+        }
+      >
+        <Icon icon="mdi:account-convert" width={18} />
+        {!iconOnly ? <span className="ml-2">Jadikan Relawan APK</span> : null}
+      </button>
+    );
+  };
+
+  const RelawanApkBadge = ({ item }) => {
+    const isApk = Number(item?.is_apk || 0) === 1;
+    if (!isApk) return null;
+    return (
+      <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+        <Icon icon="mdi:account-badge" width={14} />
+        Relawan APK
+      </span>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* ================= HEADER ================= */}
@@ -288,10 +517,16 @@ const fetchRelawan = async () => {
         <h1 className="text-3xl font-bold text-blue-900 ">Data Relawan Kunjungan</h1>
         {!isAdminPaslon && (
           <div className="flex flex-col sm:flex-row gap-3">
-            <button onClick={() => setOpenImport(true)} className="bg-blue-500/15 text-blue-800 border border-blue-200/40 px-4 py-2 rounded-lg hover:bg-blue-500/25">
+            <button
+              onClick={() => setOpenImport(true)}
+              className="bg-blue-500/15 text-blue-800 border border-blue-200/40 px-4 py-2 rounded-lg hover:bg-blue-500/25"
+            >
               Import Data Relawan
             </button>
-            <button onClick={() => navigate("/relawan/kunjungan/create")} className="bg-blue-900 text-white px-6 py-3 rounded-lg hover:bg-blue-800">
+            <button
+              onClick={() => navigate("/relawan/kunjungan/create")}
+              className="bg-blue-900 text-white px-6 py-3 rounded-lg hover:bg-blue-800"
+            >
               Tambah Relawan +
             </button>
           </div>
@@ -304,106 +539,138 @@ const fetchRelawan = async () => {
           <Icon icon="mdi:filter-variant" className="text-blue-700" width="28" />
           <div>
             <div className="text-lg font-semibold">Filter Data</div>
-            <div className="text-sm text-slate-400">Cari data berdasarkan Nama, NIK, TPS, atau Wilayah</div>
+            <div className="text-sm text-slate-400">
+              Cari data berdasarkan Nama, NIK, TPS, atau Wilayah
+            </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
           {/* SEARCH BOX GABUNGAN (Span 12 cols di mobile, 4 cols di desktop) */}
           <div className="md:col-span-4 relative group">
-              <Icon 
-                  icon="mdi:magnify" 
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" 
-                  width="24" 
-              />
-              <input
-                  className="w-full border border-gray-400 pl-12 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400"
-                  placeholder="Cari Nama / NIK / TPS"
-                  value={filters.keyword}
-                  onChange={(e) => setFilters({ ...filters, keyword: e.target.value })}
-                  onKeyDown={(e) => e.key === 'Enter' && applyFilter()}
-              />
+            <Icon
+              icon="mdi:magnify"
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors"
+              width="24"
+            />
+            <input
+              className="w-full border border-gray-400 pl-12 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400"
+              placeholder="Cari Nama / NIK / TPS"
+              value={filters.keyword}
+              onChange={(e) => setFilters({ ...filters, keyword: e.target.value })}
+              onKeyDown={(e) => e.key === "Enter" && applyFilter()}
+            />
           </div>
 
           {/* REGION FILTERS */}
           <div className="md:col-span-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* KOTA */}
-              <div className="relative group">
-                  <Icon 
-                      icon="mdi:chevron-down" 
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-focus-within:text-blue-600 transition-colors" 
-                      width="22" 
-                  />
-                  <select
-                      className={`w-full appearance-none border border-gray-400 pl-5 pr-12 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 ${filters.city_code ? "text-slate-800" : "text-slate-400"}`}
-                      value={filters.city_code}
-                      onChange={(e) => {
-                          const val = e.target.value;
-                          setFilters({ ...filters, city_code: val, district_code: "", village_code: "" });
-                          loadDistricts(val);
-                      }}
-                  >
-                      <option value="">Pilih Kota/Kabupaten</option>
-                      {cities.map((c) => (<option key={c.city_code} value={c.city_code}>{c.city}</option>))}
-                  </select>
-              </div>
+            {/* KOTA */}
+            <div className="relative group">
+              <Icon
+                icon="mdi:chevron-down"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-focus-within:text-blue-600 transition-colors"
+                width="22"
+              />
+              <select
+                className={`w-full appearance-none border border-gray-400 pl-5 pr-12 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 ${
+                  filters.city_code ? "text-slate-800" : "text-slate-400"
+                }`}
+                value={filters.city_code}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFilters({ ...filters, city_code: val, district_code: "", village_code: "" });
+                  loadDistricts(val);
+                }}
+              >
+                <option value="">Pilih Kota/Kabupaten</option>
+                {cities.map((c) => (
+                  <option key={c.city_code} value={c.city_code}>
+                    {c.city}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-              {/* KECAMATAN */}
-              <div className="relative group">
-                  <Icon 
-                      icon="mdi:chevron-down" 
-                      className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${!filters.city_code ? "text-gray-200" : "text-slate-400 group-focus-within:text-blue-600"}`} 
-                      width="22" 
-                  />
-                  <select
-                      className="w-full appearance-none border border-gray-400 pl-5 pr-12 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 disabled:bg-gray-50 disabled:text-gray-300 disabled:border-gray-200"
-                      value={filters.district_code}
-                      disabled={!filters.city_code}
-                      onChange={(e) => {
-                          const val = e.target.value;
-                          setFilters({ ...filters, district_code: val, village_code: "" });
-                          loadVillages(val);
-                      }}
-                  >
-                      <option value="">Pilih Kecamatan</option>
-                      {districts.map((d) => (<option key={d.district_code} value={d.district_code}>{d.district}</option>))}
-                  </select>
-              </div>
+            {/* KECAMATAN */}
+            <div className="relative group">
+              <Icon
+                icon="mdi:chevron-down"
+                className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${
+                  !filters.city_code
+                    ? "text-gray-200"
+                    : "text-slate-400 group-focus-within:text-blue-600"
+                }`}
+                width="22"
+              />
+              <select
+                className="w-full appearance-none border border-gray-400 pl-5 pr-12 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 disabled:bg-gray-50 disabled:text-gray-300 disabled:border-gray-200"
+                value={filters.district_code}
+                disabled={!filters.city_code}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFilters({ ...filters, district_code: val, village_code: "" });
+                  loadVillages(val);
+                }}
+              >
+                <option value="">Pilih Kecamatan</option>
+                {districts.map((d) => (
+                  <option key={d.district_code} value={d.district_code}>
+                    {d.district}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-              {/* KELURAHAN */}
-              <div className="relative group">
-                  <Icon 
-                      icon="mdi:chevron-down" 
-                      className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${!filters.district_code ? "text-gray-200" : "text-slate-400 group-focus-within:text-blue-600"}`} 
-                      width="22" 
-                  />
-                  <select
-                      className="w-full appearance-none border border-gray-400 pl-5 pr-12 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 disabled:bg-gray-50 disabled:text-gray-300 disabled:border-gray-200"
-                      value={filters.village_code}
-                      disabled={!filters.district_code}
-                      onChange={(e) => setFilters({ ...filters, village_code: e.target.value })}
-                  >
-                      <option value="">Pilih Kelurahan</option>
-                      {villages.map((v) => (<option key={v.village_code} value={v.village_code}>{v.village}</option>))}
-                  </select>
-              </div>
+            {/* KELURAHAN */}
+            <div className="relative group">
+              <Icon
+                icon="mdi:chevron-down"
+                className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${
+                  !filters.district_code
+                    ? "text-gray-200"
+                    : "text-slate-400 group-focus-within:text-blue-600"
+                }`}
+                width="22"
+              />
+              <select
+                className="w-full appearance-none border border-gray-400 pl-5 pr-12 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 disabled:bg-gray-50 disabled:text-gray-300 disabled:border-gray-200"
+                value={filters.village_code}
+                disabled={!filters.district_code}
+                onChange={(e) => setFilters({ ...filters, village_code: e.target.value })}
+              >
+                <option value="">Pilih Kelurahan</option>
+                {villages.map((v) => (
+                  <option key={v.village_code} value={v.village_code}>
+                    {v.village}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
         {/* BUTTON ACTION */}
         <div className="flex justify-end gap-3">
-          <button className="bg-blue-900 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-800 transition" 
-          onClick={applyFilter}>
+          <button
+            className="bg-blue-900 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-800 transition"
+            onClick={applyFilter}
+          >
             <Icon icon="mdi:filter-variant" width={20} />
           </button>
 
-          <button onClick={resetFilter} className="bg-blue-100 text-blue-800 px-4 py-2 rounded-lg hover:bg-blue-200 transition border border-blue-200">
+          <button
+            onClick={resetFilter}
+            className="bg-blue-100 text-blue-800 px-4 py-2 rounded-lg hover:bg-blue-200 transition border border-blue-200"
+          >
             <Icon icon="mdi:refresh" width={20} />
           </button>
 
           <div className="flex-1 md:flex-none" /> {/* Spacer */}
-          
-          <button onClick={() => setShowPasswordModal(true)} className="bg-blue-100 text-blue-800 px-6 py-2 rounded-lg hover:bg-blue-200 transition border border-green-200 flex items-center gap-4 font-bold">
+
+          <button
+            onClick={() => setShowPasswordModal(true)}
+            className="bg-blue-100 text-blue-800 px-6 py-2 rounded-lg hover:bg-blue-200 transition border border-blue-200 flex items-center gap-4 font-semibold"
+          >
             Export Akun
           </button>
         </div>
@@ -411,7 +678,11 @@ const fetchRelawan = async () => {
 
       <div className="flex items-center gap-2 text-sm">
         <span>Tampilkan</span>
-        <select value={perPage} onChange={(e) => setPerPage(Number(e.target.value))} className="border rounded-lg px-3 py-1">
+        <select
+          value={perPage}
+          onChange={(e) => setPerPage(Number(e.target.value))}
+          className="border rounded-lg px-3 py-1"
+        >
           <option value={5}>5</option>
           <option value={10}>10</option>
           <option value={25}>25</option>
@@ -428,420 +699,568 @@ const fetchRelawan = async () => {
           {isError && <div className="text-center py-6 text-red-600">Gagal memuat data</div>}
           {!isLoading && !isError && paginatedData.length === 0 && (
             <div className="text-center py-10 text-slate-500">
-              <Icon
-                icon="mdi:database-off-outline"
-                width={36}
-                className="mx-auto mb-2"
-              />
+              <Icon icon="mdi:database-off-outline" width={36} className="mx-auto mb-2" />
               <p className="font-medium">Data belum tersedia</p>
-              <p className="text-sm opacity-70">
-                Belum ada data relawan yang bisa ditampilkan
-              </p>
+              <p className="text-sm opacity-70">Belum ada data relawan yang bisa ditampilkan</p>
             </div>
           )}
-          {!isLoading && !isError && paginatedData.map((item) => (
-            <div key={item.id} className="bg-white border rounded-xl p-4 shadow-sm space-y-3">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900">{item.nama}</h3>
-                  <p className="text-sm text-gray-500">{item.nik}</p>
-                </div>
-                <span className={`px-2 py-1 rounded-full text-xs font-semibold shrink-0 ml-2 ${item.status === "active" ? "bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold  " : "bg-rose-100 text-rose-700 border border-rose-200 font-bold"}`}>
-                  {item.status === "active" ? "Aktif" : "Tidak Aktif"}
-                </span>
-              </div>
-              <div className="text-sm text-gray-600 space-y-1">
-                <div className="flex items-center gap-2">
-                  <Icon icon="mdi:map-marker-outline" width={16} className="text-gray-400 shrink-0" />
-                  <span>{item.village?.village || "-"}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Icon icon="mdi:office-building-marker-outline" width={16} className="text-gray-400 shrink-0" />
-                  <span>TPS {item.tps}</span>
-                </div>
-                {item.no_hp && (
-                  <div className="flex items-center gap-2">
-                    <Icon icon="mdi:phone-outline" width={16} className="text-gray-400 shrink-0" />
-                    <span>{item.no_hp}</span>
+
+          {!isLoading &&
+            !isError &&
+            paginatedData.map((item) => (
+              <div key={item.id} className="bg-white border rounded-xl p-4 shadow-sm space-y-3">
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <div className="flex items-center flex-wrap">
+                      <h3 className="font-semibold text-gray-900">{item.nama}</h3>
+                      <RelawanApkBadge item={item} />
+                    </div>
+                    <p className="text-sm text-gray-500">{item.nik}</p>
                   </div>
-                )}
-              </div>
-              <div className="flex items-center justify-center gap-2">
-                {!isAdminPaslon && (
-                  <>
-                    {/* DELETE */}
-                    <button
-                      onClick={() => setDeleteTarget(item)}
-                      title="Hapus"
-                      className="w-9 h-9 flex items-center justify-center rounded-lg text-red-600 border border-red-400 bg-white hover:bg-red-600 hover:text-white hover:border-red-600 transition-all shadow-sm hover:shadow-red-500/30"
-                    >
-                      <Icon icon="solar:trash-bin-trash-outline" width={18} />
-                    </button>
-                  </>
-                )}
+                  <span
+                    className={`px-2 py-1 rounded-full text-xs font-semibold shrink-0 ml-2 ${
+                      item.status === "active"
+                        ? "bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold  "
+                        : "bg-rose-100 text-rose-700 border border-rose-200 font-bold"
+                    }`}
+                  >
+                    {item.status === "active" ? "Aktif" : "Tidak Aktif"}
+                  </span>
+                </div>
 
-                {/* DETAIL */}
-                <button
-                  onClick={() => navigate(`/relawan/kunjungan/${item.id}`)}
-                  title="Lihat Detail"
-                  className="w-9 h-9 flex items-center justify-center text-blue-600 border border-blue-400 bg-white rounded-lg hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm hover:shadow-blue-500/30"
-                >
-                  <Icon icon="si:eye-line" width={18} />
-                </button>
+                <div className="text-sm text-gray-600 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Icon icon="mdi:map-marker-outline" width={16} className="text-gray-400 shrink-0" />
+                    <span>{item.village?.village || "-"}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Icon
+                      icon="mdi:office-building-marker-outline"
+                      width={16}
+                      className="text-gray-400 shrink-0"
+                    />
+                    <span>TPS {item.tps}</span>
+                  </div>
+                  {item.no_hp && (
+                    <div className="flex items-center gap-2">
+                      <Icon icon="mdi:phone-outline" width={16} className="text-gray-400 shrink-0" />
+                      <span>{item.no_hp}</span>
+                    </div>
+                  )}
+                </div>
 
-                {!isAdminPaslon && (
-                  <>
-                    {/* JADIKAN APK */}
-                    <button
-                      type="button"
-                      onClick={() => setPromoteTarget(item)}
-                      title="Jadikan Relawan APK"
-                      className="w-9 h-9 flex items-center justify-center rounded-lg text-white border border-blue-900 bg-blue-900 hover:bg-blue-800 hover:border-blue-800 transition-all shadow-sm hover:shadow-blue-500/30"
-                    >
-                      <Icon icon="mdi:account-convert" width={18} />
-                    </button>
-                  </>
-                )}
+                <div className="flex items-center justify-center gap-2">
+                  {!isAdminPaslon && (
+                    <>
+                      {/* DELETE */}
+                      <button
+                        onClick={() => setDeleteTarget(item)}
+                        title="Hapus"
+                        className="w-9 h-9 flex items-center justify-center rounded-lg text-red-600 border border-red-400 bg-white hover:bg-red-600 hover:text-white hover:border-red-600 transition-all shadow-sm hover:shadow-red-500/30"
+                      >
+                        <Icon icon="solar:trash-bin-trash-outline" width={18} />
+                      </button>
+                    </>
+                  )}
+
+                  {/* DETAIL */}
+                  <button
+                    onClick={() => navigate(`/relawan/kunjungan/${item.id}`)}
+                    title="Lihat Detail"
+                    className="w-9 h-9 flex items-center justify-center text-blue-600 border border-blue-400 bg-white rounded-lg hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm hover:shadow-blue-500/30"
+                  >
+                    <Icon icon="si:eye-line" width={18} />
+                  </button>
+
+                  {!isAdminPaslon && (
+                    <>
+                      {/* JADIKAN APK (backend-driven) */}
+                      <PromoteApkButton item={item} />
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
         </div>
 
-              {/* ================= DESKTOP TABLE VIEW (>= md) ================= */}
-      <table className="w-full text-base hidden md:table border-separate border-spacing-0">
-        <thead className="bg-slate-100">
-          <tr>
-            <th className="px-5 py-4 text-left font-bold text-slate-700">Nama</th>
-            <th className="px-5 py-4 text-left hidden md:table-cell font-bold text-slate-700">NIK</th>
-            <th className="px-5 py-4 text-left hidden md:table-cell font-bold text-slate-700">Wilayah</th>
-            <th className="px-5 py-4 text-left hidden md:table-cell font-bold text-slate-700">No. HP</th>
-            <th className="px-5 py-4 text-center hidden md:table-cell font-bold text-slate-700">TPS</th> {/* CENTER */}
-            <th className="px-5 py-4 text-center hidden md:table-cell font-bold text-slate-700">Status</th> {/* CENTER */}
-            <th className="px-5 py-4 text-center font-bold text-slate-700">Aksi</th> {/* CENTER */}
-          </tr>
-        </thead>
-
-        <tbody>
-          {isLoading && (
-            <tr><td colSpan="7" className="py-10 text-center text-slate-500">Loading data...</td></tr>
-          )}
-          
-          {isError && (
-            <tr><td colSpan="7" className="py-10 text-center text-red-600">Gagal memuat data</td></tr>
-          )}
-
-          {!isLoading && !isError && paginatedData.length === 0 && (
+        {/* ================= DESKTOP TABLE VIEW (>= md) ================= */}
+        <table className="w-full text-base hidden md:table border-separate border-spacing-0">
+          <thead className="bg-slate-100">
             <tr>
-              <td colSpan="7" className="py-16 text-center text-slate-500">
-                <div className="flex flex-col items-center gap-2 opacity-60">
-                  <Icon icon="mdi:database-off-outline" width={48} />
-                  <p className="font-semibold text-lg">Data belum tersedia</p>
-                  <p className="text-sm">
-                    Belum ada data relawan yang dapat ditampilkan.
-                  </p>
-                </div>
-              </td>
+              <th className="px-5 py-4 text-left font-bold text-slate-700">Nama</th>
+              <th className="px-5 py-4 text-left hidden md:table-cell font-bold text-slate-700">NIK</th>
+              <th className="px-5 py-4 text-left hidden md:table-cell font-bold text-slate-700">Wilayah</th>
+              <th className="px-5 py-4 text-left hidden md:table-cell font-bold text-slate-700">No. HP</th>
+              <th className="px-5 py-4 text-center hidden md:table-cell font-bold text-slate-700">
+                TPS
+              </th>{" "}
+              {/* CENTER */}
+              <th className="px-5 py-4 text-center hidden md:table-cell font-bold text-slate-700">
+                Status
+              </th>{" "}
+              {/* CENTER */}
+              <th className="px-5 py-4 text-center font-bold text-slate-700">Aksi</th> {/* CENTER */}
             </tr>
-          )}
+          </thead>
 
-          {!isLoading && paginatedData.map((item) => (
-            <tr 
-              key={item.id} 
-              className="group border-t hover:bg-blue-50/50 transition-all duration-200"
-            >
-              <td className="px-5 py-4 font-medium text-slate-800">{item.nama}</td>
-              <td className="px-5 py-4 hidden md:table-cell text-slate-600">{item.nik}</td>
-              <td className="px-5 py-4 hidden md:table-cell text-slate-600">
-                {item.village?.village || "-"}
-              </td>
-              <td className="px-5 py-4 hidden md:table-cell text-slate-600">{item.no_hp}</td>
-              
-              {/* TPS: Center */}
-              <td className="px-5 py-4 hidden md:table-cell text-center font-semibold text-slate-700">
-                {item.tps}
-              </td>
+          <tbody>
+            {isLoading && (
+              <tr>
+                <td colSpan="7" className="py-10 text-center text-slate-500">
+                  Loading data...
+                </td>
+              </tr>
+            )}
 
-              {/* STATUS: Center & Glow Style */}
-              <td className="px-5 py-4 hidden md:table-cell text-center">
-                <span className={`inline-flex justify-center items-center min-w-[100px] px-4 py-1.5 rounded-full text-xs font-bold transition-all
-                  ${item.status === "active" 
-                    ? "bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold " 
-                    : "bg-rose-100 text-rose-700 border border-rose-200 font-bold "
+            {isError && (
+              <tr>
+                <td colSpan="7" className="py-10 text-center text-red-600">
+                  Gagal memuat data
+                </td>
+              </tr>
+            )}
+
+            {!isLoading && !isError && paginatedData.length === 0 && (
+              <tr>
+                <td colSpan="7" className="py-16 text-center text-slate-500">
+                  <div className="flex flex-col items-center gap-2 opacity-60">
+                    <Icon icon="mdi:database-off-outline" width={48} />
+                    <p className="font-semibold text-lg">Data belum tersedia</p>
+                    <p className="text-sm">Belum ada data relawan yang dapat ditampilkan.</p>
+                  </div>
+                </td>
+              </tr>
+            )}
+
+            {!isLoading &&
+              paginatedData.map((item) => (
+                <tr key={item.id} className="group border-t hover:bg-blue-50/50 transition-all duration-200">
+                  <td className="px-5 py-4 font-medium text-slate-800">
+                    <div className="flex items-center flex-wrap">
+                      <span>{item.nama}</span>
+                      <RelawanApkBadge item={item} />
+                    </div>
+                  </td>
+                  <td className="px-5 py-4 hidden md:table-cell text-slate-600">{item.nik}</td>
+                  <td className="px-5 py-4 hidden md:table-cell text-slate-600">
+                    {item.village?.village || "-"}
+                  </td>
+                  <td className="px-5 py-4 hidden md:table-cell text-slate-600">{item.no_hp}</td>
+
+                  {/* TPS: Center */}
+                  <td className="px-5 py-4 hidden md:table-cell text-center font-semibold text-slate-700">
+                    {item.tps}
+                  </td>
+
+                  {/* STATUS: Center & Glow Style */}
+                  <td className="px-5 py-4 hidden md:table-cell text-center">
+                    <span
+                      className={`inline-flex justify-center items-center min-w-[100px] px-4 py-1.5 rounded-full text-xs font-bold transition-all
+                    ${
+                      item.status === "active"
+                        ? "bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold "
+                        : "bg-rose-100 text-rose-700 border border-rose-200 font-bold "
+                    }`}
+                    >
+                      {item.status === "active" ? "Aktif" : "Tidak Aktif"}
+                    </span>
+                  </td>
+
+                  {/* AKSI: Center */}
+                  <td className="px-5 py-4">
+                    <div className="flex items-center justify-center gap-2">
+                      {!isAdminPaslon && (
+                        <>
+                          <button
+                            onClick={() => setDeleteTarget(item)}
+                            title="Hapus"
+                            className="w-9 h-9 flex items-center justify-center rounded-lg text-red-600 border border-red-400 bg-white hover:bg-red-600 hover:text-white hover:border-red-600 transition-all shadow-sm hover:shadow-red-500/30"
+                          >
+                            <Icon icon="solar:trash-bin-trash-outline" width={18} />
+                          </button>
+                        </>
+                      )}
+
+                      <button
+                        onClick={() => navigate(`/relawan/kunjungan/${item.id}`)}
+                        title="Lihat Detail"
+                        className="w-9 h-9 flex items-center justify-center text-blue-600 border border-blue-400 bg-white rounded-lg hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm hover:shadow-blue-500/30"
+                      >
+                        <Icon icon="si:eye-line" width={18} />
+                      </button>
+
+                      {!isAdminPaslon && (
+                        <>
+                          {/* JADIKAN APK (backend-driven) */}
+                          <PromoteApkButton item={item} />
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+
+        {!isLoading && !isError && paginatedData.length > 0 && (
+          <div className="flex justify-between items-center px-6 py-4">
+            <div className="text-sm text-slate-500">
+              Halaman {page} dari {totalPage}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                disabled={page === 1}
+                onClick={() => setPage(page - 1)}
+                className="px-3 py-1 border rounded-lg disabled:opacity-50"
+              >
+                Sebelumnya
+              </button>
+
+              {pages.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className={`px-3 py-1 rounded-lg border ${
+                    p === page ? "bg-blue-900 text-white border-blue-900" : "hover:bg-slate-100"
                   }`}
                 >
-                  {item.status === "active" ? "Aktif" : "Tidak Aktif"}
-                </span>
-              </td>
-
-              {/* AKSI: Center */}
-              <td className="px-5 py-4">
-                <div className="flex items-center justify-center gap-2">
-                {!isAdminPaslon && (
-                  <>
-                    <button
-                      onClick={() => setDeleteTarget(item)}
-                      title="Hapus"
-                      className="w-9 h-9 flex items-center justify-center rounded-lg text-red-600 border border-red-400 bg-white hover:bg-red-600 hover:text-white hover:border-red-600 transition-all shadow-sm hover:shadow-red-500/30"
-                    >
-                      <Icon icon="solar:trash-bin-trash-outline" width={18} />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setPromoteTarget(item)}
-                      title="Jadikan Relawan APK"
-                      className="w-9 h-9 flex items-center justify-center rounded-lg text-white border border-blue-900 bg-blue-900 hover:bg-blue-800 hover:border-blue-800 transition-all shadow-sm hover:shadow-blue-500/30"
-                    >
-                      <Icon icon="mdi:account-convert" width={18} />
-                    </button>
-                  </>
-                )}
-
-                <button
-                  onClick={() => navigate(`/relawan/kunjungan/${item.id}`)}
-                  title="Lihat Detail"
-                  className="w-9 h-9 flex items-center justify-center text-blue-600 border border-blue-400 bg-white rounded-lg hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm hover:shadow-blue-500/30"
-                >
-                  <Icon icon="si:eye-line" width={18} />
+                  {p}
                 </button>
+              ))}
 
-                {!isAdminPaslon && (
-                  <>
-                    <button
-                      onClick={() => setDeleteTarget(item)}
-                      title="Hapus"
-                      className="w-9 h-9 flex items-center justify-center rounded-lg text-red-600 border border-red-400 bg-white hover:bg-red-600 hover:text-white hover:border-red-600 transition-all shadow-sm hover:shadow-red-500/30"
-                    >
-                      <Icon icon="solar:trash-bin-trash-outline" width={18} />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setPromoteTarget(item)}
-                      title="Jadikan Relawan APK"
-                      className="w-9 h-9 flex items-center justify-center rounded-lg text-white border border-blue-900 bg-blue-900 hover:bg-blue-800 hover:border-blue-800 transition-all shadow-sm hover:shadow-blue-500/30"
-                    >
-                      <Icon icon="mdi:account-convert" width={18} />
-                    </button>
-                  </>
-                )}
-              </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {!isLoading && !isError && paginatedData.length > 0 && (
-        <div className="flex justify-between items-center px-6 py-4">
-          <div className="text-sm text-slate-500">
-            Halaman {page} dari {totalPage}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              disabled={page === 1}
-              onClick={() => setPage(page - 1)}
-              className="px-3 py-1 border rounded-lg disabled:opacity-50"
-            >
-              Sebelumnya
-            </button>
-
-            {pages.map((p) => (
               <button
-                key={p}
-                onClick={() => setPage(p)}
-                className={`px-3 py-1 rounded-lg border ${
-                  p === page
-                    ? "bg-blue-900 text-white border-blue-900"
-                    : "hover:bg-slate-100"
-                }`}
+                disabled={page === totalPage}
+                onClick={() => setPage(page + 1)}
+                className="px-3 py-1 border rounded-lg disabled:opacity-50"
               >
-                {p}
+                Selanjutnya
               </button>
-            ))}
-
-            <button
-              disabled={page === totalPage}
-              onClick={() => setPage(page + 1)}
-              className="px-3 py-1 border rounded-lg disabled:opacity-50"
-            >
-              Selanjutnya
-            </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
       </div>
 
       {/* ================= MODALS ================= */}
       {/* Modal Delete */}
-      {deleteTarget && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDeleteTarget(null)} />
-          <div className="relative bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 z-10">
-            <h2 className="text-xl font-semibold text-slate-800 mb-2">Hapus Relawan</h2>
-            {deleteTarget.visit_forms_count > 0 ? (
-              <div className="text-slate-700">
-                <p className="mb-4">Relawan <span className="font-semibold">“{deleteTarget.nama}”</span> masih mempunyai <span className="font-semibold text-red-600">{deleteTarget.visit_forms_count}</span> data kunjungan.</p>
-                <div className="flex justify-end mt-6"><button onClick={() => setDeleteTarget(null)} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100">Tutup</button></div>
-              </div>
-            ) : (
-              <>
-                <p className="text-slate-600 mb-6">Yakin ingin menghapus relawan <span className="font-semibold text-slate-800">“{deleteTarget.nama}”</span>?</p>
-                <div className="flex justify-end gap-3">
-                  <button onClick={() => setDeleteTarget(null)} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100">Batal</button>
-                  <button onClick={() => { deleteMutation.mutate(deleteTarget.id); setDeleteTarget(null); }} className="px-5 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700">Hapus</button>
+      {deleteTarget &&
+        createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDeleteTarget(null)} />
+            <div className="relative bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 z-10">
+              <h2 className="text-xl font-semibold text-slate-800 mb-2">Hapus Relawan</h2>
+              {deleteTarget.visit_forms_count > 0 ? (
+                <div className="text-slate-700">
+                  <p className="mb-4">
+                    Relawan <span className="font-semibold">“{deleteTarget.nama}”</span> masih mempunyai{" "}
+                    <span className="font-semibold text-red-600">{deleteTarget.visit_forms_count}</span> data kunjungan.
+                  </p>
+                  <div className="flex justify-end mt-6">
+                    <button
+                      onClick={() => setDeleteTarget(null)}
+                      className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100"
+                    >
+                      Tutup
+                    </button>
+                  </div>
                 </div>
-              </>
-            )}
-          </div>
-        </div>,
-        document.getElementById("modal-root")
-      )}
+              ) : (
+                <>
+                  <p className="text-slate-600 mb-6">
+                    Yakin ingin menghapus relawan <span className="font-semibold text-slate-800">“{deleteTarget.nama}”</span>?
+                  </p>
+                  <div className="flex justify-end gap-3">
+                    <button
+                      onClick={() => setDeleteTarget(null)}
+                      className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      onClick={() => {
+                        deleteMutation.mutate(deleteTarget.id);
+                        setDeleteTarget(null);
+                      }}
+                      className="px-5 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700"
+                    >
+                      Hapus
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>,
+          document.getElementById("modal-root")
+        )}
 
       {/* Modal jadiin relawan kunjungan jadi relawan apk juga */}
-      {promoteTarget && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setPromoteTarget(null)} />
-          <div className="relative bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 z-10">
-            <h2 className="text-xl font-semibold text-slate-800 mb-2">Jadikan Relawan APK</h2>
-            <p className="text-slate-600 mb-6">
-              Yakin mau jadikan <b>{promoteTarget.nama}</b> sebagai <b>Relawan APK</b>?
-            </p>
+      {promoteTarget &&
+        createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setPromoteTarget(null)} />
+            <div className="relative bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 z-10">
+              <h2 className="text-xl font-semibold text-slate-800 mb-2">Jadikan Relawan APK</h2>
+              <p className="text-slate-600 mb-4">
+                Yakin mau jadikan <b>{promoteTarget.nama}</b> sebagai <b>Relawan APK</b>?
+              </p>
 
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setPromoteTarget(null)}
-                disabled={promoteMutation.isPending}
-                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 disabled:opacity-50"
-              >
-                Batal
-              </button>
+              {/* ✅ DROPDOWN KOORDINATOR APK (dari backend) */}
+              <div className="mb-6">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Pilih Koordinator APK</label>
 
-              <button
-                onClick={() => promoteMutation.mutate(promoteTarget.id)}
-                disabled={promoteMutation.isPending}
-                className="px-5 py-2 rounded-lg bg-blue-900 text-white hover:bg-blue-800 disabled:opacity-50"
-              >
-                {promoteMutation.isPending ? "Memproses..." : "Konfirmasi"}
-              </button>
+                {(() => {
+                  const st = eligibleMap?.[promoteTarget.id];
+                  const loading = !st || st.loading;
+                  const koors = Array.isArray(st?.koors) ? st.koors : [];
+
+                  // message fallback khusus permintaan kamu
+                  const emptyMessage = "Tidak ada koordinator yang 1 wilayah tersedia";
+                  const msg = st?.message || emptyMessage;
+
+                  if (loading) {
+                    return (
+                      <div className="text-sm text-slate-500 flex items-center gap-2">
+                        <Icon icon="mdi:loading" className="animate-spin" width={18} />
+                        Memuat koordinator...
+                      </div>
+                    );
+                  }
+
+                  if (koors.length === 0) {
+                    return (
+                      <div className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-3">
+                        {msg || emptyMessage}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="relative">
+                      <Icon
+                        icon="mdi:chevron-down"
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-focus-within:text-blue-600 transition-colors"
+                        width="22"
+                      />
+                      <select
+                        className="w-full appearance-none border border-gray-300 pl-4 pr-12 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600"
+                        value={selectedKoorApkId}
+                        onChange={(e) => setSelectedKoorApkId(e.target.value)}
+                      >
+                        <option value="">Pilih Koordinator APK</option>
+                        {koors.map((k) => (
+                          <option key={k.id} value={k.id}>
+                            {k.nama || `Koordinator #${k.id}`}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="mt-2 text-xs text-slate-500">
+                        Wajib pilih koordinator APK tujuan (1 wilayah).
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setPromoteTarget(null);
+                    setSelectedKoorApkId("");
+                  }}
+                  disabled={promoteMutation.isPending}
+                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+                >
+                  Batal
+                </button>
+
+                <button
+                  onClick={() => {
+                    const st = eligibleMap?.[promoteTarget.id];
+                    const koors = Array.isArray(st?.koors) ? st.koors : [];
+
+                    if (koors.length === 0) {
+                      // sesuai permintaan: tampilkan message jika tidak ada koor 1 wilayah
+                      toast.error(st?.message || "Tidak ada koordinator yang 1 wilayah tersedia", { id: "promote-apk" });
+                      return;
+                    }
+
+                    if (!selectedKoorApkId) {
+                      toast.error("Pilih koordinator APK terlebih dahulu", { id: "promote-apk" });
+                      return;
+                    }
+
+                    promoteMutation.mutate({ id: promoteTarget.id, koor_apk_id: Number(selectedKoorApkId) });
+                  }}
+                  disabled={promoteMutation.isPending}
+                  className="px-5 py-2 rounded-lg bg-blue-900 text-white hover:bg-blue-800 disabled:opacity-50"
+                >
+                  {promoteMutation.isPending ? "Memproses..." : "Konfirmasi"}
+                </button>
+              </div>
             </div>
-          </div>
-        </div>,
-        document.getElementById("modal-root")
-      )}
+          </div>,
+          document.getElementById("modal-root")
+        )}
 
       {/* Modal Import */}
-      {!isAdminPaslon && openImport && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={closeImportModal} />
-          <div className="relative bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 z-10">
-            <button onClick={closeImportModal} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><Icon icon="mdi:close" width="22" /></button>
-            <h2 className="text-3xl text-blue-900 font-semibold mb-2">Import Data Relawan</h2>
-            <ol className="list-decimal list-inside text-md text-slate-600 space-y-1 mb-5">
+      {!isAdminPaslon &&
+        openImport &&
+        createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={closeImportModal} />
+            <div className="relative bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 z-10">
+              <button
+                onClick={closeImportModal}
+                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
+              >
+                <Icon icon="mdi:close" width="22" />
+              </button>
+              <h2 className="text-3xl text-blue-900 font-semibold mb-2">Import Data Relawan</h2>
+              <ol className="list-decimal list-inside text-md text-slate-600 space-y-1 mb-5">
                 <li>Download template Excel</li>
                 <li>Isi data sesuai format</li>
                 <li>Upload file lalu klik Import</li>
               </ol>
-            <button className="w-full border border-blue-600 text-blue-600 py-2.5 rounded-lg mb-7 hover:bg-blue-50" onClick={downloadTemplate}>Download Template Excel</button>
-            <div className="mb-1">
-              <label className="text-md font-medium mb-2 block">Upload File Excel</label>
-              <input type="file" accept=".xls,.xlsx" className="w-full border rounded-lg px-4 py-2 text-sm mb-4" onChange={(e) => setFile(e.target.files[0])} />
+              <button
+                className="w-full border border-blue-600 text-blue-600 py-2.5 rounded-lg mb-7 hover:bg-blue-50"
+                onClick={downloadTemplate}
+              >
+                Download Template Excel
+              </button>
+              <div className="mb-1">
+                <label className="text-md font-medium mb-2 block">Upload File Excel</label>
+                <input
+                  type="file"
+                  accept=".xls,.xlsx"
+                  className="w-full border rounded-lg px-4 py-2 text-sm mb-4"
+                  onChange={(e) => setFile(e.target.files[0])}
+                />
+              </div>
+              <button
+                onClick={importRelawan}
+                disabled={importing}
+                className={`w-full py-3 rounded-lg text-white ${
+                  importing ? "bg-slate-400 cursor-not-allowed" : "bg-blue-900 hover:bg-blue-800"
+                }`}
+              >
+                {importing ? "Mengimpor..." : "Import Data"}
+              </button>
+              {importResult && importResult.failed_rows.length > 0 && (
+                <div className="mt-6 max-h-64 overflow-y-auto border rounded-lg p-4 bg-red-50">
+                  <h3 className="font-semibold text-red-700 mb-3">
+                    Gagal Import ({importResult.failed_rows.length})
+                  </h3>
+                  <ul className="space-y-3 text-sm">
+                    {importResult.failed_rows.map((row, i) => (
+                      <li key={i} className="border-b pb-2">
+                        <div className="font-medium text-red-800">
+                          Baris {row.row} — {row.nama || "-"}
+                        </div>
+                        <ul className="list-disc ml-5 text-red-600">
+                          {row.errors.map((err, idx) => (
+                            <li key={idx}>{err}</li>
+                          ))}
+                        </ul>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
-            <button onClick={importRelawan} disabled={importing} className={`w-full py-3 rounded-lg text-white ${importing ? "bg-slate-400 cursor-not-allowed" : "bg-blue-900 hover:bg-blue-800"}`}>{importing ? "Mengimpor..." : "Import Data"}</button>
-            {importResult && importResult.failed_rows.length > 0 && (
-              <div className="mt-6 max-h-64 overflow-y-auto border rounded-lg p-4 bg-red-50">
-                <h3 className="font-semibold text-red-700 mb-3">Gagal Import ({importResult.failed_rows.length})</h3>
-                <ul className="space-y-3 text-sm">{importResult.failed_rows.map((row, i) => (<li key={i} className="border-b pb-2"><div className="font-medium text-red-800">Baris {row.row} — {row.nama || "-"}</div><ul className="list-disc ml-5 text-red-600">{row.errors.map((err, idx) => (<li key={idx}>{err}</li>))}</ul></li>))}</ul>
+            {successMessage && (
+              <div
+                className="fixed bottom-5 right-5 z-50 bg-green-600 text-white px-5 py-3 rounded-lg shadow-lg"
+                onClick={() => setSuccessMessage("")}
+              >
+                {successMessage}
               </div>
             )}
-          </div>
-          {successMessage && <div className="fixed bottom-5 right-5 z-50 bg-green-600 text-white px-5 py-3 rounded-lg shadow-lg" onClick={() => setSuccessMessage("")}>{successMessage}</div>}
-        </div>,
-        document.getElementById("modal-root")
-      )}
+          </div>,
+          document.getElementById("modal-root")
+        )}
 
       {/* Modal Password */}
-      {showPasswordModal && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={closeExportModal} />
-          <div className="relative bg-white w-full max-w-md rounded-2xl p-6 z-10 shadow-2xl">
-            <h2 className="text-xl font-semibold text-slate-800 mb-5">Konfirmasi Password</h2>
+      {showPasswordModal &&
+        createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={closeExportModal} />
+            <div className="relative bg-white w-full max-w-md rounded-2xl p-6 z-10 shadow-2xl">
+              <h2 className="text-xl font-semibold text-slate-800 mb-5">Konfirmasi Password</h2>
 
-            {/* ===== FAKE EMAIL (ANTI AUTOFILL) ===== */}
-            <input
-              type="email"
-              name="email"
-              autoComplete="email"
-              tabIndex={-1}
-              className="absolute -left-[9999px] opacity-0 pointer-events-none"
-            />
-
-            {/* ===== FAKE PASSWORD (PAIR EMAIL) ===== */}
-            <input
-              type="password"
-              name="password"
-              autoComplete="current-password"
-              tabIndex={-1}
-              className="absolute -left-[9999px] opacity-0 pointer-events-none"
-            />
-
-            {/* ===== PASSWORD ASLI ===== */}
-            <div className="relative mb-6">
-              {/* ICON LOCK */}
-              <Icon
-                icon="mdi:lock-outline"
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                width={22}
-              />
-
+              {/* ===== FAKE EMAIL (ANTI AUTOFILL) ===== */}
               <input
-                type={showExportPassword ? "text" : "password"}
-                value={exportPassword}
-                onChange={(e) => setExportPassword(e.target.value)}
-                autoComplete="new-password"
-                placeholder="Password akun"
-                className="w-full border rounded-xl pl-12 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                type="email"
+                name="email"
+                autoComplete="email"
+                tabIndex={-1}
+                className="absolute -left-[9999px] opacity-0 pointer-events-none"
               />
 
-              {/* SHOW / HIDE */}
-              <button
-                type="button"
-                onClick={() => setShowExportPassword(!showExportPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
-              >
+              {/* ===== FAKE PASSWORD (PAIR EMAIL) ===== */}
+              <input
+                type="password"
+                name="password"
+                autoComplete="current-password"
+                tabIndex={-1}
+                className="absolute -left-[9999px] opacity-0 pointer-events-none"
+              />
+
+              {/* ===== PASSWORD ASLI ===== */}
+              <div className="relative mb-6">
+                {/* ICON LOCK */}
                 <Icon
-                  icon={showExportPassword ? "mdi:eye-off-outline" : "mdi:eye-outline"}
-                  width="22"
+                  icon="mdi:lock-outline"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  width={22}
                 />
-              </button>
-            </div>
 
-            {/* ACTION BUTTONS */}
-            <div className="flex flex-col sm:flex-row justify-end gap-3">
-              <button
-                type="button"
-                onClick={closeExportModal}
-                disabled={exporting}
-                className="w-full sm:w-auto px-4 py-2 rounded-lg border text-slate-600 hover:bg-slate-100 transition disabled:opacity-50"
-              >
-                Batal
-              </button>
+                <input
+                  type={showExportPassword ? "text" : "password"}
+                  value={exportPassword}
+                  onChange={(e) => setExportPassword(e.target.value)}
+                  autoComplete="new-password"
+                  placeholder="Password akun"
+                  className="w-full border rounded-xl pl-12 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
 
-              <button
-                type="button"
-                onClick={handleConfirmExport}
-                disabled={!exportPassword || exporting}
-                className={`w-full sm:w-auto px-5 py-2 rounded-lg bg-blue-900 text-white hover:bg-blue-800 transition 
-                  ${exporting || !exportPassword ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                {exporting ? "Memproses..." : "Konfirmasi"}
-              </button>
+                {/* SHOW / HIDE */}
+                <button
+                  type="button"
+                  onClick={() => setShowExportPassword(!showExportPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
+                >
+                  <Icon
+                    icon={showExportPassword ? "mdi:eye-off-outline" : "mdi:eye-outline"}
+                    width="22"
+                  />
+                </button>
+              </div>
+
+              {/* ACTION BUTTONS */}
+              <div className="flex flex-col sm:flex-row justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeExportModal}
+                  disabled={exporting}
+                  className="w-full sm:w-auto px-4 py-2 rounded-lg border text-slate-600 hover:bg-slate-100 transition disabled:opacity-50"
+                >
+                  Batal
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleConfirmExport}
+                  disabled={!exportPassword || exporting}
+                  className={`w-full sm:w-auto px-5 py-2 rounded-lg bg-blue-900 text-white hover:bg-blue-800 transition 
+                    ${exporting || !exportPassword ? "opacity-50 cursor-not-allowed" : ""}`}
+                >
+                  {exporting ? "Memproses..." : "Konfirmasi"}
+                </button>
+              </div>
             </div>
-          </div>
-        </div>,
-        document.getElementById("modal-root")
-      )}
+          </div>,
+          document.getElementById("modal-root")
+        )}
     </div>
   );
 }

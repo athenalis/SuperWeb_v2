@@ -76,7 +76,6 @@ class KoordinatorApkImport implements ToCollection, WithHeadingRow
 
             $headers = $this->mapHeader($row);
 
-            // TPS DIHAPUS
             $requiredHeaders = [
                 'nama'     => 'nama',
                 'nik'      => 'nik',
@@ -102,7 +101,6 @@ class KoordinatorApkImport implements ToCollection, WithHeadingRow
                 continue;
             }
 
-            // ===== normalize HP
             $rawPhone = $row[$headers['no_hp']] ?? '';
             $hp = $this->normalizePhoneNumber((string) $rawPhone);
 
@@ -117,7 +115,6 @@ class KoordinatorApkImport implements ToCollection, WithHeadingRow
 
             $row[$headers['no_hp']] = $hp;
 
-            // ===== validasi (TPS DIHAPUS)
             $validator = Validator::make($row->toArray(), [
                 $headers['nama']     => 'required|string|max:255',
                 $headers['nik']      => 'required|digits:16',
@@ -140,7 +137,6 @@ class KoordinatorApkImport implements ToCollection, WithHeadingRow
 
             $nik = (string) $row[$headers['nik']];
 
-            // ===== cek duplikasi lintas tabel (soft delete aware)
             $existsNik =
                 DB::table($this->tableApk)->where('nik', $nik)->whereNull('deleted_at')->exists()
                 || DB::table($this->tableKunjungan)->where('nik', $nik)->whereNull('deleted_at')->exists()
@@ -160,7 +156,6 @@ class KoordinatorApkImport implements ToCollection, WithHeadingRow
                 continue;
             }
 
-            // ===== lokasi
             $province = $this->findLocation(Province::class, $row[$headers['province']]);
             $city     = $this->findLocation(City::class, $row[$headers['city']], 'province_code', $province?->province_code);
             $district = $this->findLocation(District::class, $row[$headers['district']], 'city_code', $city?->city_code);
@@ -176,7 +171,6 @@ class KoordinatorApkImport implements ToCollection, WithHeadingRow
                 continue;
             }
 
-            // ===== limit 2 per desa (APK)
             $existingCount = DB::table($this->tableApk)
                 ->where('village_code', $village->village_code)
                 ->whereNull('deleted_at')
@@ -193,7 +187,6 @@ class KoordinatorApkImport implements ToCollection, WithHeadingRow
                 continue;
             }
 
-            // ===== simpan
             try {
                 DB::transaction(function () use ($row, $headers, $province, $city, $district, $village, $nik, $hp) {
                     $nameClean = Str::slug((string) $row[$headers['nama']], '');
@@ -282,7 +275,6 @@ class KoordinatorApkImport implements ToCollection, WithHeadingRow
         return array_unique($errors);
     }
 
-    // pakai mapping lokasi kamu (kalau mau copy mapping “Jakarta dll”, tempel di sini)
     private function normalizeLocationName($modelClass, string $input): string
     {
         $input = trim(strtoupper($input));
@@ -321,7 +313,6 @@ class KoordinatorApkImport implements ToCollection, WithHeadingRow
             foreach ($map as $key => $value) {
                 if (str_contains($input, $key)) return $value;
             }
-            // kalau ga match map, balik ke input uppercase
             return strtoupper($input);
         }
 
@@ -366,15 +357,12 @@ class KoordinatorApkImport implements ToCollection, WithHeadingRow
             default => 'nama',
         };
 
-        // exact
         $result = (clone $query)->where($columnName, $searchName)->first();
         if ($result) return $result;
 
-        // starts with
         $result = (clone $query)->where($columnName, 'LIKE', $searchName . '%')->first();
         if ($result) return $result;
 
-        // contains
         if (strlen($searchName) >= 4) {
             $result = (clone $query)->where($columnName, 'LIKE', '%' . $searchName . '%')->first();
             if ($result) return $result;

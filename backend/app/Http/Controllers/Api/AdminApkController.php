@@ -341,16 +341,28 @@ class AdminApkController extends Controller
         }
 
         DB::transaction(function () use ($adminApk) {
-            $adminApk->delete();
+            $userId = $adminApk->user_id;
 
-            if ($adminApk->user && method_exists($adminApk->user, 'delete')) {
+            if (method_exists($adminApk, 'forceDelete')) {
+                $adminApk->forceDelete();
+            } else {
+                $adminApk->delete();
+            }
+
+            if ($userId) {
+                UserCredential::where('user_id', $userId)->delete();
+            }
+
+            if ($adminApk->user && method_exists($adminApk->user, 'forceDelete')) {
+                $adminApk->user->forceDelete();
+            } elseif ($adminApk->user) {
                 $adminApk->user->delete();
             }
         });
 
         return response()->json([
             'status' => true,
-            'message' => 'Admin APK berhasil dihapus'
+            'message' => 'Admin APK berhasil dihapus permanen'
         ]);
     }
 }

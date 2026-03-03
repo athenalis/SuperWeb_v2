@@ -15,9 +15,6 @@ class PetaSuaraController extends Controller
         'paslon_03' => '#C40000',
     ];
 
-    /**
-     * Agregasi suara per Kota (City level)
-     */
     public function perKota()
     {
         $result = Cache::remember('peta_paslon_kota', 300, function () {
@@ -69,9 +66,6 @@ class PetaSuaraController extends Controller
         ]);
     }
 
-    /**
-     * Agregasi suara per Kecamatan (District level)
-     */
     public function perKecamatan()
     {
         $result = Cache::remember('peta_paslon_kecamatan', 300, function () {
@@ -129,9 +123,6 @@ class PetaSuaraController extends Controller
         ]);
     }
 
-    /**
-     * Agregasi suara per Kelurahan (Village level)
-     */
     public function perKelurahan()
     {
         $result = Cache::remember('peta_paslon_kelurahan', 300, function () {

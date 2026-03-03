@@ -14,9 +14,6 @@ class VisitUpdated extends Notification
     public $visitForm;
     public $updater;
 
-    /**
-     * Create a new notification instance.
-     */
     public function __construct($visitForm, $updater)
     {
         $this->visitForm = $visitForm;
@@ -44,7 +41,7 @@ class VisitUpdated extends Notification
             'title' => 'Data Kunjungan Diperbarui',
             'message' => "Data kunjungan {$this->visitForm->nama} telah diperbarui oleh {$this->updater->name}.",
             'visit_id' => $this->visitForm->id,
-            'kunjungan_id' => $this->visitForm->id, // For frontend compatibility
+            'kunjungan_id' => $this->visitForm->id,
             'updater_id' => $this->updater->id,
             'relawan_id' => $this->visitForm->relawan_id,
             'redirect_url' => "/verifikasi?relawan_id={$this->visitForm->relawan_id}&status=pending",

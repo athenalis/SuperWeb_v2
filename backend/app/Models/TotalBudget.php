@@ -9,7 +9,7 @@ class TotalBudget extends Model
     protected $table = 'total_budget';
 
     protected $fillable = [
-        'paslon_id',  // ✅ tambah
+        'paslon_id',
         'amount'
     ];
 

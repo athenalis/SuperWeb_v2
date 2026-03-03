@@ -44,6 +44,23 @@ class CoordinatorController extends Controller
         return DB::table('roles')->where('id', $user->role_id)->value('role');
     }
 
+    private function currentPaslonId(): int
+    {
+        $adminPaslon = AdminPaslon::query()
+            ->where('user_id', Auth::id())
+            ->whereNull('deleted_at')
+            ->first();
+
+        if (!$adminPaslon || !$adminPaslon->paslon_id) {
+            abort(response()->json([
+                'status'  => false,
+                'message' => 'Akun ini bukan admin paslon / tidak memiliki paslon.',
+            ], 403));
+        }
+
+        return (int) $adminPaslon->paslon_id;
+    }
+
     private function paslonSuffix(int $paslonId): string
     {
         $nomorUrut = (int) (DB::table('paslons')->where('id', $paslonId)->value('nomor_urut') ?? 0);
@@ -723,71 +740,56 @@ class CoordinatorController extends Controller
             'nik' => 'required|digits:16'
         ]);
 
-        $adminPaslon = AdminPaslon::query()
-            ->where('user_id', Auth::id())
+        $paslonId = $this->currentPaslonId();
+
+        $activeHere = CoordinatorVisit::where('paslon_id', $paslonId)
+            ->where('nik', $request->nik)
             ->whereNull('deleted_at')
             ->first();
 
-        if (!$adminPaslon) {
+        if ($activeHere) {
             return response()->json([
-                'status'  => false,
-                'message' => 'Akun ini bukan admin paslon.',
-            ], 403);
-        }
-
-        $koordinator = CoordinatorVisit::withTrashed()
-            ->with([
-                'user' => fn($q) => $q->withTrashed(),
-                'province:province_code,province',
-                'city:city_code,city',
-                'district:district_code,district',
-                'village:village_code,village',
-            ])
-            ->where('nik', $request->nik)
-            ->first();
-
-        if (!$koordinator) {
-            return response()->json([
-                'exists'  => false,
+                'exists' => true,
                 'deleted' => false,
-                'data'    => null,
+                'message' => 'NIK sudah terdaftar dan masih aktif di paslon ini.',
+                'data' => [
+                    'id' => $activeHere->id,
+                    'nama' => $activeHere->nama,
+                    'nik' => $activeHere->nik,
+                ]
             ], 200);
         }
 
-        if (!$koordinator->trashed()) {
+        $softDeleted = CoordinatorVisit::withTrashed()
+            ->where('nik', $request->nik)
+            ->whereNotNull('deleted_at')
+            ->orderByDesc('deleted_at')
+            ->first();
+
+        if ($softDeleted) {
             return response()->json([
-                'exists'  => true,
-                'deleted' => false,
-                'message' => 'NIK sudah terdaftar dan aktif',
-                'data'    => [
-                    'id' => $koordinator->id,
-                    'nama' => $koordinator->nama,
-                    'nik' => $koordinator->nik,
-                    'no_hp' => $koordinator->no_hp,
-                    'alamat' => $koordinator->alamat,
-                    'province_code' => $koordinator->province_code,
-                    'city_code' => $koordinator->city_code,
-                    'district_code' => $koordinator->district_code,
-                    'village_code' => $koordinator->village_code,
-                ],
+                'exists' => true,
+                'deleted' => true,
+                'message' => 'NIK pernah terdaftar dan saat ini nonaktif (soft delete). Bisa direstore ke paslon ini.',
+                'data' => [
+                    'id' => $softDeleted->id,
+                    'nama' => $softDeleted->nama,
+                    'nik' => $softDeleted->nik,
+
+                    'no_hp' => $softDeleted->no_hp,
+                    'alamat' => $softDeleted->alamat,
+                    'province_code' => $softDeleted->province_code,
+                    'city_code' => $softDeleted->city_code,
+                    'district_code' => $softDeleted->district_code,
+                    'village_code' => $softDeleted->village_code,
+
+                    'old_paslon_id' => $softDeleted->paslon_id,
+                ]
             ], 200);
         }
 
         return response()->json([
-            'exists'  => true,
-            'deleted' => true,
-            'message' => 'NIK pernah terdaftar dan saat ini nonaktif. Ingin aktifkan kembali?',
-            'data'    => [
-                'id' => $koordinator->id,
-                'nama' => $koordinator->nama,
-                'nik' => $koordinator->nik,
-                'no_hp' => $koordinator->no_hp,
-                'alamat' => $koordinator->alamat,
-                'province_code' => $koordinator->province_code,
-                'city_code' => $koordinator->city_code,
-                'district_code' => $koordinator->district_code,
-                'village_code' => $koordinator->village_code,
-            ],
+            'exists' => false
         ], 200);
     }
 
@@ -807,36 +809,7 @@ class CoordinatorController extends Controller
             'nama.regex' => 'Nama tidak boleh mengandung angka'
         ]);
 
-        $adminPaslon = AdminPaslon::query()
-            ->where('user_id', Auth::id())
-            ->whereNull('deleted_at')
-            ->first();
-
-        if (!$adminPaslon) {
-            return response()->json([
-                'status'  => false,
-                'message' => 'Akun ini bukan admin paslon / tidak memiliki paslon.',
-            ], 403);
-        }
-
-        $koordinator = CoordinatorVisit::withTrashed()
-            ->with(['user' => fn($q) => $q->withTrashed()])
-            ->where('nik', $request->nik)
-            ->first();
-
-        if (!$koordinator) {
-            return response()->json([
-                'status'  => false,
-                'message' => 'Data koordinator dengan NIK ini tidak ditemukan.',
-            ], 404);
-        }
-
-        if (!$koordinator->trashed()) {
-            return response()->json([
-                'status'  => false,
-                'message' => 'Koordinator dengan NIK ini sudah aktif.',
-            ], 422);
-        }
+        $paslonId = $this->currentPaslonId();
 
         if ($request->filled('no_hp')) {
             $request->merge([
@@ -844,7 +817,36 @@ class CoordinatorController extends Controller
             ]);
         }
 
-        $result = DB::transaction(function () use ($request, $koordinator, $adminPaslon) {
+        $alreadyActiveInTarget = CoordinatorVisit::where('paslon_id', $paslonId)
+            ->where('nik', $request->nik)
+            ->whereNull('deleted_at')
+            ->exists();
+
+        if ($alreadyActiveInTarget) {
+            return response()->json([
+                'status' => false,
+                'message' => 'NIK sudah terdaftar dan aktif di paslon ini'
+            ], 422);
+        }
+
+        $koordinator = CoordinatorVisit::withTrashed()
+            ->with(['user' => fn($q) => $q->withTrashed()])
+            ->where('nik', $request->nik)
+            ->whereNotNull('deleted_at')
+            ->orderByDesc('deleted_at')
+            ->first();
+
+        if (!$koordinator) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Data NIK tidak ditemukan / tidak ada yang soft delete'
+            ], 404);
+        }
+
+        $newEmail = null;
+        $newPasswordPlain = null;
+
+        $result = DB::transaction(function () use ($request, $koordinator, $paslonId, &$newEmail, &$newPasswordPlain) {
 
             $targetVillage = $request->input('village_code', $koordinator->village_code);
 
@@ -863,12 +865,8 @@ class CoordinatorController extends Controller
 
             $koordinator->restore();
 
-            if ($koordinator->user && $koordinator->user->trashed()) {
-                $koordinator->user->restore();
-            }
-
             $koordinator->update([
-                'paslon_id'     => (int) $adminPaslon->paslon_id,
+                'paslon_id'     => $paslonId,
                 'nama'          => $request->input('nama', $koordinator->nama),
                 'no_hp'         => $request->input('no_hp', $koordinator->no_hp),
                 'alamat'        => $request->input('alamat', $koordinator->alamat),
@@ -879,13 +877,24 @@ class CoordinatorController extends Controller
                 'status'        => 'inactive',
             ]);
 
-            $nameClean = strtolower(preg_replace('/\s+/', '', trim($koordinator->nama)));
-            $newEmail = $nameClean . rand(1000, 9999) . '@gmail.com';
-            $newPasswordPlain = $nameClean . rand(1000, 9999);
-
-            if (User::where('email', $newEmail)->where('id', '!=', optional($koordinator->user)->id)->exists()) {
-                $newEmail = $nameClean . rand(10000, 99999) . '@gmail.com';
+            if ($koordinator->user && method_exists($koordinator->user, 'restore') && $koordinator->user->trashed()) {
+                $koordinator->user->restore();
             }
+
+            $nameClean = strtolower(trim((string) $koordinator->nama));
+            $nameClean = preg_replace('/\s+/', '', $nameClean);
+            $nameClean = preg_replace('/[^a-z0-9]/', '', $nameClean);
+            if ($nameClean === '') $nameClean = 'user';
+
+            do {
+                $newEmail = $nameClean . rand(1000, 9999) . '@gmail.com';
+            } while (
+                User::where('email', $newEmail)
+                    ->when($koordinator->user, fn($q) => $q->where('id', '!=', $koordinator->user->id))
+                    ->exists()
+            );
+
+            $newPasswordPlain = $nameClean . rand(1000, 9999);
 
             if ($koordinator->user) {
                 $roleId = $this->roleId('kunjungan_koordinator');
@@ -900,13 +909,17 @@ class CoordinatorController extends Controller
                 ]);
 
                 UserCredential::where('user_id', $koordinator->user->id)
-                    ->update(['is_active' => false]);
+                    ->update([
+                        'is_active' => 0,
+                        'used_at'   => now(),
+                    ]);
 
                 UserCredential::create([
                     'user_id'            => $koordinator->user->id,
                     'encrypted_password' => Crypt::encryptString($newPasswordPlain),
                     'type'               => 'reactive',
-                    'is_active'          => true,
+                    'is_active'          => 1,
+                    'used_at'            => null,
                 ]);
             }
 
@@ -922,8 +935,6 @@ class CoordinatorController extends Controller
             return [
                 'blocked' => false,
                 'koordinator' => $koordinator->fresh(['user', 'province', 'city', 'district', 'village']),
-                'email' => $newEmail,
-                'password' => $newPasswordPlain,
             ];
         });
 
@@ -940,8 +951,8 @@ class CoordinatorController extends Controller
             'data' => [
                 'koordinator' => $result['koordinator'],
                 'user' => [
-                    'email'    => $result['email'],
-                    'password' => $result['password'],
+                    'email'    => $newEmail,
+                    'password' => $newPasswordPlain,
                 ],
             ]
         ]);

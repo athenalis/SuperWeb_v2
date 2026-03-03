@@ -3,12 +3,9 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 
 class AdminPaslon extends Model
 {
-    use SoftDeletes;
-
     protected $table = 'admin_paslons';
 
     protected $fillable = [

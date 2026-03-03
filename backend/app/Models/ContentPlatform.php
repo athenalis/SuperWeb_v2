@@ -12,12 +12,12 @@ class ContentPlatform extends Model
         'content_plan_id',
         'platform_id',
         'content_type_id',
-        'is_collaborator', // ✅ WAJIB
+        'is_collaborator',
         'link',
     ];
 
     protected $casts = [
-        'is_collaborator' => 'boolean', // ✅ WAJIB
+        'is_collaborator' => 'boolean',
     ];
 
     public $timestamps = false;

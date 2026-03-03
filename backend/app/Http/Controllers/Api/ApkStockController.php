@@ -66,12 +66,8 @@ class ApkStockController extends Controller
         return $row;
     }
 
-    /**
-     * ✅ Ambil paslon_id dari user login (semua role APK)
-     */
     private function currentPaslonId(): int
     {
-        /** @var User|null $user */
         $user = Auth::user();
         if (!$user) {
             abort(response()->json(['status' => false, 'message' => 'Unauthorized'], 401));
@@ -117,9 +113,6 @@ class ApkStockController extends Controller
         ], 403));
     }
 
-    /**
-     * GET /apk/stock/history
-     */
     public function history(Request $request)
     {
         $request->validate([
@@ -179,10 +172,8 @@ class ApkStockController extends Controller
                 'coordinator_id' => $t->coordinator_id,
                 'created_at' => $t->created_at,
 
-                // ✅ single field buat FE (paling penting)
                 'actor_name' => $actorName,
 
-                // optional (kalau FE masih butuh object-nya)
                 'item' => $t->item,
                 'creator' => $t->creator,
                 'coordinator' => $t->coordinator,
@@ -218,19 +209,16 @@ class ApkStockController extends Controller
             'note' => 'nullable|string|max:255',
         ];
 
-        // IN boleh bawa total_cost
         if ($type === ApkStockTransaction::TYPE_IN) {
             $rules['total_cost'] = 'nullable|numeric|min:0';
         }
 
-        // OUT wajib ada coordinator_id (buat actor_name & riwayat)
         if ($type === ApkStockTransaction::TYPE_OUT) {
             $rules['coordinator_id'] = 'required|integer|exists:apk_koordinators,id';
         }
 
         $request->validate($rules);
 
-        /** @var User|null $user */
         $user = Auth::user();
         if (!$user) {
             return response()->json(['status' => false, 'message' => 'Unauthorized'], 401);
@@ -279,7 +267,6 @@ class ApkStockController extends Controller
                 ], 422)),
             };
 
-            // budget bertambah hanya saat IN
             $budgetAdd = 0.0;
             if ($type === ApkStockTransaction::TYPE_IN) {
                 $budgetAdd = $request->total_cost !== null
@@ -289,7 +276,6 @@ class ApkStockController extends Controller
 
             $budgetAfter = $budgetBefore + $budgetAdd;
 
-            // 1) simpan transaksi
             DB::table('apk_stock_transactions')->insert([
                 'paslon_id' => (int) $paslonId,
                 'item_id' => (int) $request->item_id,
@@ -302,7 +288,6 @@ class ApkStockController extends Controller
                 'created_at' => now(),
             ]);
 
-            // 2) update ringkasan
             DB::table('apk_item_stocks')->updateOrInsert(
                 ['item_id' => (int) $request->item_id],
                 [
@@ -312,14 +297,12 @@ class ApkStockController extends Controller
                 ]
             );
 
-            // 3) sync ke apk_items
             DB::table('apk_items')->where('id', (int) $request->item_id)->update([
                 'stock' => $qtyAfter,
                 'budget_total' => $budgetAfter,
                 'updated_at' => now(),
             ]);
 
-            // 4) log activity
             ActivityLogger::log([
                 'action' => 'CREATE',
                 'target_type' => 'apk_stock',
@@ -358,7 +341,6 @@ class ApkStockController extends Controller
         $paslonId = $this->currentPaslonId();
         $perPage = (int) ($request->per_page ?? 15);
 
-        // pastikan item ada & milik paslon yg sama
         $exists = DB::table('apk_items')
             ->where('id', (int) $id)
             ->where('paslon_id', (int) $paslonId)
@@ -414,10 +396,8 @@ class ApkStockController extends Controller
                 'coordinator_id' => $t->coordinator_id,
                 'created_at' => $t->created_at,
 
-                // penting utk FE
                 'actor_name' => $actorName,
 
-                // optional
                 'item' => $t->item,
                 'creator' => $t->creator,
                 'coordinator' => $t->coordinator,

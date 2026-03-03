@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@iconify/react";
@@ -8,6 +8,8 @@ import api from "../../../lib/axios";
 export default function InputKoordinatorApk({ onClose }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const redirectPath = "/koordinator/apk";
 
   const [form, setForm] = useState({
     nama: "",
@@ -26,6 +28,14 @@ export default function InputKoordinatorApk({ onClose }) {
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoredUser, setRestoredUser] = useState(null);
   const [isRestoreMode, setIsRestoreMode] = useState(false);
+  const [restoreDraft, setRestoreDraft] = useState(null);
+
+  // ✅ pending wilayah supaya value ke-set setelah options siap
+  const [pendingDistrict, setPendingDistrict] = useState("");
+  const [pendingVillage, setPendingVillage] = useState("");
+
+  // ✅ NEW: lock input saat sudah autofill restore (samakan dengan koordinator kunjungan)
+  const isFormLocked = isRestoreMode || isRestoring;
 
   /* =========================
      VALIDASI PER FIELD
@@ -42,14 +52,13 @@ export default function InputKoordinatorApk({ onClose }) {
         break;
 
       case "no_hp": {
-        // boleh angka dan + (khusus di awal)
         if (!/^\+?\d*$/.test(value)) return "No HP hanya boleh angka atau +62";
 
         const normalized = value.startsWith("+62")
           ? "0" + value.slice(3)
           : value.startsWith("62")
-            ? "0" + value.slice(2)
-            : value;
+          ? "0" + value.slice(2)
+          : value;
 
         if (!/^08\d+$/.test(normalized))
           return "No HP harus diawali 08, 62, atau +62";
@@ -85,6 +94,9 @@ export default function InputKoordinatorApk({ onClose }) {
      HANDLE CHANGE
   ========================= */
   const handleChange = (e) => {
+    // ✅ NEW: kalau sudah restore preview, jangan boleh ubah isi form
+    if (isFormLocked) return;
+
     const { name, value } = e.target;
 
     setForm((prev) => ({
@@ -110,50 +122,80 @@ export default function InputKoordinatorApk({ onClose }) {
 
   /* =========================
      CHECK NIK (RESTORE MODE)
+     ✅ Sesuai backend: kalau soft deleted, backend HARUS kirim data lengkap di data.data
   ========================= */
   const checkNik = async (nik) => {
-    const res = await api.post("/koordinator-apk/check-nik", { nik });
+    // ✅ NEW: kalau sudah restore preview, jangan cek ulang
+    if (isFormLocked) return;
 
-    if (res.data.exists && res.data.deleted) {
-      setRestoreNik(nik);
-      setShowRestoreConfirm(true);
+    try {
+      const res = await api.post("/koordinator-apk/check-nik", { nik });
+      const data = res.data;
+
+      if (data.exists && data.deleted === false) {
+        toast.error(data.message || "NIK sudah terdaftar dan aktif");
+        return;
+      }
+
+      if (data.exists && data.deleted === true) {
+        setRestoreNik(nik);
+
+        // ✅ backend kamu harus kirim lengkap di sini (lihat patch controller)
+        setRestoreDraft(data?.data || null);
+        setShowRestoreConfirm(true);
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Gagal cek NIK");
     }
   };
 
+  /* =========================
+     RESTORE (PREVIEW SAJA)
+     ✅ hanya autofill dari restoreDraft
+     ❌ JANGAN panggil /restore-by-nik di sini (itu beneran restore)
+  ========================= */
   const handleRestore = async () => {
     if (!restoreNik) return;
 
+    const k = restoreDraft;
+
+    if (!k || typeof k !== "object") {
+      toast.error(
+        "Data restore tidak tersedia dari check-nik. Pastikan response check-nik (deleted=true) mengandung no_hp/alamat/wilayah.",
+        { id: "restore-koordinator-apk" }
+      );
+      return;
+    }
+
     setIsRestoring(true);
-
     try {
-      const res = await api.post("/koordinator-apk/restore-by-nik", {
-        nik: restoreNik,
-      });
+      // set data dasar + city dulu
+      setForm((prev) => ({
+        ...prev,
+        nama: k?.nama ?? "",
+        nik: k?.nik ?? restoreNik ?? "",
+        no_hp: k?.no_hp ?? "",
+        alamat: k?.alamat ?? "",
+        province_code: k?.province_code ?? 31,
+        city_code: k?.city_code ?? "",
+        district_code: "",
+        village_code: "",
+      }));
 
-      // Backend mengembalikan data koordinator langsung
-      const data = res.data.data;
+      // simpan pending agar di-set saat options sudah siap
+      setPendingDistrict(k?.district_code ?? "");
+      setPendingVillage(k?.village_code ?? "");
 
-      setForm({
-        nama: data.nama,
-        nik: data.nik,
-        no_hp: data.no_hp,
-        alamat: data.alamat,
-        province_code: data.province_code,
-        city_code: data.city_code,
-        district_code: data.district_code,
-        village_code: data.village_code,
-      });
-
+      // ✅ form akan terkunci setelah ini
       setIsRestoreMode(true);
-      // User credential sudah ada di data.user jika ada
-      setRestoredUser(data.user || null);
       setShowRestoreConfirm(false);
 
-      toast.success("Koordinator berhasil direstore!");
-      navigate("/koordinator/apk");
-    } catch (err) {
-      console.error(err.response?.data);
-      toast.error("Gagal mengaktifkan koordinator");
+      // ✅ copy disamakan dengan requirement (tidak bisa edit)
+      toast.success(
+        "Data koordinator berhasil dimuat. Silakan klik Simpan untuk mengaktifkan.",
+        { id: "restore-koordinator-apk", duration: 3500 }
+      );
     } finally {
       setIsRestoring(false);
     }
@@ -171,7 +213,8 @@ export default function InputKoordinatorApk({ onClose }) {
 
   const { data: districts = [] } = useQuery({
     queryKey: ["districts", form.city_code],
-    queryFn: async () => (await api.get(`/wilayah/districts/${form.city_code}`)).data,
+    queryFn: async () =>
+      (await api.get(`/wilayah/districts/${form.city_code}`)).data,
     enabled: !!form.city_code,
   });
 
@@ -183,6 +226,44 @@ export default function InputKoordinatorApk({ onClose }) {
   });
 
   /* =========================
+     ✅ APPLY PENDING DISTRICT saat options districts siap
+  ========================= */
+  useEffect(() => {
+    if (!pendingDistrict) return;
+    if (!form.city_code) return;
+
+    const exists = districts.some(
+      (d) => String(d.district_code) === String(pendingDistrict)
+    );
+    if (!exists) return;
+
+    setForm((prev) => ({
+      ...prev,
+      district_code: pendingDistrict,
+    }));
+    setPendingDistrict("");
+  }, [pendingDistrict, districts, form.city_code]);
+
+  /* =========================
+     ✅ APPLY PENDING VILLAGE saat options villages siap
+  ========================= */
+  useEffect(() => {
+    if (!pendingVillage) return;
+    if (!form.district_code) return;
+
+    const exists = villages.some(
+      (v) => String(v.village_code) === String(pendingVillage)
+    );
+    if (!exists) return;
+
+    setForm((prev) => ({
+      ...prev,
+      village_code: pendingVillage,
+    }));
+    setPendingVillage("");
+  }, [pendingVillage, villages, form.district_code]);
+
+  /* =========================
      SUBMIT
   ========================= */
   const mutation = useMutation({
@@ -190,21 +271,18 @@ export default function InputKoordinatorApk({ onClose }) {
     onSuccess: (res) => {
       queryClient.invalidateQueries(["koordinator-apk"]);
 
-      if (restoredUser) {
-        toast.success(
-          `Koordinator berhasil diaktifkan!\nEmail: ${restoredUser.email}\nPassword: ${restoredUser.password}`,
-          { duration: 6000, style: { whiteSpace: "pre-line" } }
-        );
-        setRestoredUser(null);
-      } else {
-        const akun = res.data.data.user;
+      const akun = res?.data?.data?.user;
+      if (akun?.email && akun?.password) {
         toast.success(
           `Koordinator berhasil dibuat!\nEmail: ${akun.email}\nPassword: ${akun.password}`,
           { duration: 5000, style: { whiteSpace: "pre-line" } }
         );
+      } else {
+        toast.success("Koordinator berhasil dibuat!", { duration: 3000 });
+        console.log("Create response:", res?.data);
       }
 
-      navigate("/koordinator/apk");
+      navigate(redirectPath);
     },
     onError: (err) => {
       console.log("ERROR:", err.response?.data);
@@ -221,7 +299,7 @@ export default function InputKoordinatorApk({ onClose }) {
     },
   });
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!validateAll()) {
@@ -229,15 +307,57 @@ export default function InputKoordinatorApk({ onClose }) {
       return;
     }
 
-    // kalau restore mode, data sudah aktif via endpoint restore
+    // ✅ restore mode: aktifkan beneran DI SINI saat klik Simpan
     if (isRestoreMode) {
-      toast.success(
-        `Koordinator berhasil diaktifkan!\nEmail: ${restoredUser.email}\nPassword: ${restoredUser.password}`,
-        { duration: 6000, style: { whiteSpace: "pre-line" } }
-      );
+      try {
+        toast.loading("Menyimpan & mengaktifkan koordinator...", {
+          id: "restore-save-koor-apk",
+        });
 
-      navigate("/koordinator/apk");
-      return;
+        const res = await api.post("/koordinator-apk/restore-by-nik", {
+          nik: form.nik,
+          nama: form.nama,
+          no_hp: form.no_hp,
+          alamat: form.alamat,
+          province_code: form.province_code,
+          city_code: form.city_code,
+          district_code: form.district_code,
+          village_code: form.village_code,
+        });
+
+        const payload = res?.data?.data ?? {};
+        const user = payload?.user || null;
+
+        const email = user?.email || user?.username;
+        const password = user?.password || user?.plain_password;
+
+        toast.success(
+          `Koordinator APK berhasil diaktifkan!\n${email ? `Email: ${email}` : "Email: -"}\n${
+            password ? `Password: ${password}` : "Password: - (tidak dikirim backend)"
+          }`,
+          {
+            id: "restore-save-koor-apk",
+            duration: 7000,
+            style: { whiteSpace: "pre-line" },
+          }
+        );
+
+        queryClient.invalidateQueries(["koordinator-apk"]);
+        navigate(redirectPath);
+
+        setIsRestoreMode(false);
+        setRestoredUser(null);
+        setRestoreDraft(null);
+        setRestoreNik(null);
+        return;
+      } catch (err) {
+        console.error(err.response?.data || err);
+        toast.error(
+          err?.response?.data?.message || "Gagal mengaktifkan koordinator",
+          { id: "restore-save-koor-apk" }
+        );
+        return;
+      }
     }
 
     mutation.mutate();
@@ -263,16 +383,21 @@ export default function InputKoordinatorApk({ onClose }) {
             <input
               name="nik"
               value={form.nik}
+              disabled={isFormLocked} // ✅ NEW
               onChange={(e) => {
+                if (isFormLocked) return; // ✅ NEW
                 const value = e.target.value;
                 if (!/^\d*$/.test(value)) return;
                 if (value.length > 16) return;
                 handleChange(e);
               }}
               onBlur={() => {
+                if (isFormLocked) return; // ✅ NEW
                 if (form.nik.length === 16) checkNik(form.nik);
               }}
-              className="w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400"
+              className={`w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400 ${
+                isFormLocked ? "bg-white cursor-not-allowed" : ""
+              }`}
               inputMode="numeric"
               placeholder="Masukkan NIK"
             />
@@ -283,8 +408,11 @@ export default function InputKoordinatorApk({ onClose }) {
               <input
                 name="nama"
                 value={form.nama}
+                disabled={isFormLocked} // ✅ NEW
                 onChange={handleChange}
-                className="w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400"
+                className={`w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400 ${
+                  isFormLocked ? "bg-white cursor-not-allowed" : ""
+                }`}
                 placeholder="Masukkan Nama Lengkap"
               />
             </Field>
@@ -293,13 +421,17 @@ export default function InputKoordinatorApk({ onClose }) {
               <input
                 name="no_hp"
                 value={form.no_hp}
+                disabled={isFormLocked} // ✅ NEW
                 onChange={(e) => {
+                  if (isFormLocked) return; // ✅ NEW
                   const value = e.target.value;
                   if (!/^\+?\d*$/.test(value)) return;
                   if (value.length > 14) return;
                   handleChange(e);
                 }}
-                className="w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400"
+                className={`w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400 ${
+                  isFormLocked ? "bg-white cursor-not-allowed" : ""
+                }`}
                 inputMode="numeric"
                 placeholder="Cth: 0821xxxx, 62821xxxx, +62821xxxx"
               />
@@ -310,8 +442,11 @@ export default function InputKoordinatorApk({ onClose }) {
             <textarea
               name="alamat"
               value={form.alamat}
+              disabled={isFormLocked} // ✅ NEW
               onChange={handleChange}
-              className="w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400 "
+              className={`w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400 ${
+                isFormLocked ? "bg-white cursor-not-allowed" : ""
+              }`}
               placeholder="Masukkan alamat anda"
             />
           </Field>
@@ -338,6 +473,7 @@ export default function InputKoordinatorApk({ onClose }) {
               placeholder="Pilih Kota/Kabupaten"
               valueKey="city_code"
               labelKey="city"
+              disabled={isFormLocked} // ✅ NEW
             />
 
             <SelectField
@@ -349,7 +485,7 @@ export default function InputKoordinatorApk({ onClose }) {
               onChange={handleChange}
               options={districts}
               placeholder="Pilih Kecamatan"
-              disabled={!form.city_code}
+              disabled={isFormLocked || !form.city_code} // ✅ NEW
               valueKey="district_code"
               labelKey="district"
             />
@@ -363,7 +499,7 @@ export default function InputKoordinatorApk({ onClose }) {
               onChange={handleChange}
               options={villages}
               placeholder="Pilih Kelurahan"
-              disabled={!form.district_code}
+              disabled={isFormLocked || !form.district_code} // ✅ NEW
               valueKey="village_code"
               labelKey="village"
             />
@@ -379,7 +515,7 @@ export default function InputKoordinatorApk({ onClose }) {
             </button>
             <button
               type="button"
-              onClick={() => navigate("/koordinator/apk")}
+              onClick={() => navigate(redirectPath)}
               className="bg-white-100 px-6 py-2 rounded-lg text-gray-500 hover:underline font-semibold"
             >
               Batal
@@ -388,9 +524,6 @@ export default function InputKoordinatorApk({ onClose }) {
         </form>
       </div>
 
-      {/* =========================
-          SHOW RESTORE MODAL
-      ========================= */}
       {showRestoreConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-lg">
@@ -398,8 +531,8 @@ export default function InputKoordinatorApk({ onClose }) {
               NIK Sudah Pernah Terdaftar
             </h3>
             <p className="text-gray-600 mb-6">
-              NIK ini pernah terdaftar dan saat ini nonaktif.
-              Apakah ingin mengaktifkan kembali?
+              NIK ini pernah terdaftar dan saat ini nonaktif. Apakah ingin
+              mengaktifkan kembali?
             </p>
 
             <div className="flex justify-end gap-3">
@@ -414,7 +547,7 @@ export default function InputKoordinatorApk({ onClose }) {
                 disabled={isRestoring}
                 className="px-4 py-2 rounded-lg bg-blue-900 text-white"
               >
-                {isRestoring ? "Mengaktifkan..." : "Ya, Aktifkan"}
+                {isRestoring ? "Memuat..." : "Ya, Aktifkan"}
               </button>
             </div>
           </div>

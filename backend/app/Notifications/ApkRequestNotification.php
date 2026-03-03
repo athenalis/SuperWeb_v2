@@ -28,17 +28,11 @@ class ApkRequestNotification extends Notification
         $this->message = $message;
     }
 
-    /**
-     * Get the notification's delivery channels.
-     */
     public function via(object $notifiable): array
     {
         return ['database'];
     }
 
-    /**
-     * Get the array representation of the notification.
-     */
     public function toArray(object $notifiable): array
     {
         $requestNo = $this->apkRequest->request_no ?? '#' . $this->apkRequest->id;
@@ -63,7 +57,6 @@ class ApkRequestNotification extends Notification
             'apk_request_delivered' => "Barang untuk permintaan {$requestNo} telah diterima",
         ];
 
-        // Tentukan URL aksi
         $actionUrl = match($this->type) {
              'apk_request', 'apk_request_revised', 'apk_request_delivered', 'apk_request_assigned' => "/inbox",
              default => "/permintaan-apk?id={$this->apkRequest->id}" 

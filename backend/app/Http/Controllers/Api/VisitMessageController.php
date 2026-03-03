@@ -10,25 +10,19 @@ use Illuminate\Support\Facades\Validator;
 
 class VisitMessageController extends Controller
 {
-    /**
-     * Get all messages for a specific visit
-     */
     public function index($visitId)
     {
         try {
             $visit = VisitForm::findOrFail($visitId);
             $user = auth()->user();
 
-            // Simplified access control
             $canAccess = false;
 
             if ($user->role === 'admin') {
                 $canAccess = true;
             } elseif ($user->role === 'koordinator') {
-                // Koordinator can access if visit belongs to their relawan
-                $canAccess = true; // Allow for now, can refine later
+                $canAccess = true; 
             } elseif ($user->role === 'relawan') {
-                // Relawan can access their own visits
                 $relawan = $user->relawan;
                 if ($relawan && $visit->relawan_id === $relawan->id) {
                     $canAccess = true;

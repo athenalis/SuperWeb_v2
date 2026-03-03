@@ -136,7 +136,7 @@ export default function RelawanApk() {
       const res = await api.post(
         "/relawan/export-apk",
         { password: exportPassword },
-        { 
+        {
           responseType: "blob",
           validateStatus: (status) => status < 500,
         }
@@ -171,12 +171,12 @@ export default function RelawanApk() {
 
       toast.success("Export berhasil", { id: toastId });
       closeExportModal();
-        } catch (err) {
-        toast.error(err?.message || "Gagal export", { id: toastId }); // ✅ pasti ada teks
-        } finally {
-          setExporting(false);
-        }
-      };
+    } catch (err) {
+      toast.error(err?.message || "Gagal export", { id: toastId }); // ✅ pasti ada teks
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const closeExportModal = () => {
     setShowPasswordModal(false);
@@ -256,9 +256,9 @@ export default function RelawanApk() {
     }
   };
 
-    const roleId = Number(localStorage.getItem("role_id"));
-    const isAdminPaslon = roleId === 2;
-    const isAdminApk = roleId === 3;
+  const roleId = Number(localStorage.getItem("role_id"));
+  const isAdminPaslon = roleId === 2;
+  const isAdminApk = roleId === 3;
   return (
     <div className="space-y-6">
       {/* ================= HEADER ================= */}
@@ -331,9 +331,8 @@ export default function RelawanApk() {
                 width="22"
               />
               <select
-                className={`w-full appearance-none border border-gray-400 pl-5 pr-12 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 ${
-                  filters.city_code ? "text-slate-800" : "text-slate-400"
-                }`}
+                className={`w-full appearance-none border border-gray-400 pl-5 pr-12 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 ${filters.city_code ? "text-slate-800" : "text-slate-400"
+                  }`}
                 value={filters.city_code}
                 onChange={(e) => {
                   const val = e.target.value;
@@ -359,11 +358,10 @@ export default function RelawanApk() {
             <div className="relative group">
               <Icon
                 icon="mdi:chevron-down"
-                className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${
-                  !filters.city_code
-                    ? "text-gray-200"
-                    : "text-slate-400 group-focus-within:text-blue-600"
-                }`}
+                className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${!filters.city_code
+                  ? "text-gray-200"
+                  : "text-slate-400 group-focus-within:text-blue-600"
+                  }`}
                 width="22"
               />
               <select
@@ -389,11 +387,10 @@ export default function RelawanApk() {
             <div className="relative group">
               <Icon
                 icon="mdi:chevron-down"
-                className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${
-                  !filters.district_code
-                    ? "text-gray-200"
-                    : "text-slate-400 group-focus-within:text-blue-600"
-                }`}
+                className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${!filters.district_code
+                  ? "text-gray-200"
+                  : "text-slate-400 group-focus-within:text-blue-600"
+                  }`}
                 width="22"
               />
               <select
@@ -491,11 +488,10 @@ export default function RelawanApk() {
                     <p className="text-sm text-gray-500">{item.nik}</p>
                   </div>
                   <span
-                    className={`px-2 py-1 rounded-full text-xs font-semibold shrink-0 ml-2 ${
-                      item.status === "active"
-                        ? "bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold"
-                        : "bg-rose-100 text-rose-700 border border-rose-200 font-bold"
-                    }`}
+                    className={`px-2 py-1 rounded-full text-xs font-semibold shrink-0 ml-2 ${item.status === "active"
+                      ? "bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold"
+                      : "bg-rose-100 text-rose-700 border border-rose-200 font-bold"
+                      }`}
                   >
                     {item.status === "active" ? "Aktif" : "Tidak Aktif"}
                   </span>
@@ -524,7 +520,7 @@ export default function RelawanApk() {
                 </div>
 
                 <div className="pt-3 border-t flex items-center gap-2">
-                  {role !== "admin" && (
+                  {role !== "admin" && !isAdminApk && !isAdminPaslon && (
                     <button
                       onClick={() => setDeleteTarget(item)}
                       className="p-2 rounded-lg text-red-600 border border-red-200 hover:bg-red-50 shrink-0"
@@ -623,11 +619,10 @@ export default function RelawanApk() {
                   <td className="px-5 py-4 hidden md:table-cell text-center">
                     <span
                       className={`inline-flex justify-center items-center min-w-[100px] px-4 py-1.5 rounded-full text-xs font-bold transition-all
-                      ${
-                        item.status === "active"
+                      ${item.status === "active"
                           ? "bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold"
                           : "bg-rose-100 text-rose-700 border border-rose-200 font-bold"
-                      }`}
+                        }`}
                     >
                       {item.status === "active" ? "Aktif" : "Tidak Aktif"}
                     </span>
@@ -635,7 +630,7 @@ export default function RelawanApk() {
 
                   <td className="px-5 py-4">
                     <div className="flex items-center justify-center gap-2">
-                      {role !== "admin" && (
+                      {role !== "admin" && !isAdminApk && !isAdminPaslon && (
                         <button
                           onClick={() => setDeleteTarget(item)}
                           title="Hapus"
@@ -678,11 +673,10 @@ export default function RelawanApk() {
                 <button
                   key={p}
                   onClick={() => setPage(p)}
-                  className={`px-3 py-1 rounded-lg border ${
-                    p === page
-                      ? "bg-blue-900 text-white border-blue-900"
-                      : "hover:bg-slate-100"
-                  }`}
+                  className={`px-3 py-1 rounded-lg border ${p === page
+                    ? "bg-blue-900 text-white border-blue-900"
+                    : "hover:bg-slate-100"
+                    }`}
                 >
                   {p}
                 </button>
@@ -774,96 +768,95 @@ export default function RelawanApk() {
 
       {/* Modal Import */}
       {!isAdminPaslon && !isAdminApk && openImport && createPortal(
-          <div className="fixed inset-0 z-50 flex items-center justify-center">
-            <div
-              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={closeImportModal}
+          />
+
+          <div className="relative bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 z-10">
+            <button
               onClick={closeImportModal}
-            />
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
+            >
+              <Icon icon="mdi:close" width="22" />
+            </button>
 
-            <div className="relative bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 z-10">
-              <button
-                onClick={closeImportModal}
-                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
-              >
-                <Icon icon="mdi:close" width="22" />
-              </button>
+            <h2 className="text-3xl text-blue-900 font-semibold mb-2">
+              Import Data Relawan
+            </h2>
 
-              <h2 className="text-3xl text-blue-900 font-semibold mb-2">
-                Import Data Relawan
-              </h2>
+            <ol className="list-decimal list-inside text-md text-slate-600 space-y-1 mb-5">
+              <li>Download template Excel</li>
+              <li>Isi data sesuai format</li>
+              <li>Upload file lalu klik Import</li>
+            </ol>
 
-              <ol className="list-decimal list-inside text-md text-slate-600 space-y-1 mb-5">
-                <li>Download template Excel</li>
-                <li>Isi data sesuai format</li>
-                <li>Upload file lalu klik Import</li>
-              </ol>
+            <button
+              className="w-full border border-blue-600 text-blue-600 py-2.5 rounded-lg mb-7 hover:bg-blue-50"
+              onClick={downloadTemplate}
+            >
+              Download Template Excel
+            </button>
 
-              <button
-                className="w-full border border-blue-600 text-blue-600 py-2.5 rounded-lg mb-7 hover:bg-blue-50"
-                onClick={downloadTemplate}
-              >
-                Download Template Excel
-              </button>
-
-              <div className="mb-1">
-                <label className="text-md font-medium mb-2 block">
-                  Upload File Excel
-                </label>
-                <input
-                  type="file"
-                  accept=".xls,.xlsx"
-                  className="w-full border rounded-lg px-4 py-2 text-sm mb-4"
-                  onChange={(e) => setFile(e.target.files[0])}
-                />
-              </div>
-
-              <button
-                onClick={importRelawan}
-                disabled={importing}
-                className={`w-full py-3 rounded-lg text-white ${
-                  importing
-                    ? "bg-slate-400 cursor-not-allowed"
-                    : "bg-blue-900 hover:bg-blue-800"
-                }`}
-              >
-                {importing ? "Mengimpor..." : "Import Data"}
-              </button>
-
-              {importResult && importResult.failed_rows?.length > 0 && (
-                <div className="mt-6 max-h-64 overflow-y-auto border rounded-lg p-4 bg-red-50">
-                  <h3 className="font-semibold text-red-700 mb-3">
-                    Gagal Import ({importResult.failed_rows.length})
-                  </h3>
-
-                  <ul className="space-y-3 text-sm">
-                    {importResult.failed_rows.map((row, i) => (
-                      <li key={i} className="border-b pb-2">
-                        <div className="font-medium text-red-800">
-                          Baris {row.row} — {row.nama || "-"}
-                        </div>
-                        <ul className="list-disc ml-5 text-red-600">
-                          {row.errors.map((err, idx) => (
-                            <li key={idx}>{err}</li>
-                          ))}
-                        </ul>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+            <div className="mb-1">
+              <label className="text-md font-medium mb-2 block">
+                Upload File Excel
+              </label>
+              <input
+                type="file"
+                accept=".xls,.xlsx"
+                className="w-full border rounded-lg px-4 py-2 text-sm mb-4"
+                onChange={(e) => setFile(e.target.files[0])}
+              />
             </div>
 
-            {successMessage && (
-              <div
-                className="fixed bottom-5 right-5 z-50 bg-green-600 text-white px-5 py-3 rounded-lg shadow-lg"
-                onClick={() => setSuccessMessage("")}
-              >
-                {successMessage}
+            <button
+              onClick={importRelawan}
+              disabled={importing}
+              className={`w-full py-3 rounded-lg text-white ${importing
+                ? "bg-slate-400 cursor-not-allowed"
+                : "bg-blue-900 hover:bg-blue-800"
+                }`}
+            >
+              {importing ? "Mengimpor..." : "Import Data"}
+            </button>
+
+            {importResult && importResult.failed_rows?.length > 0 && (
+              <div className="mt-6 max-h-64 overflow-y-auto border rounded-lg p-4 bg-red-50">
+                <h3 className="font-semibold text-red-700 mb-3">
+                  Gagal Import ({importResult.failed_rows.length})
+                </h3>
+
+                <ul className="space-y-3 text-sm">
+                  {importResult.failed_rows.map((row, i) => (
+                    <li key={i} className="border-b pb-2">
+                      <div className="font-medium text-red-800">
+                        Baris {row.row} — {row.nama || "-"}
+                      </div>
+                      <ul className="list-disc ml-5 text-red-600">
+                        {row.errors.map((err, idx) => (
+                          <li key={idx}>{err}</li>
+                        ))}
+                      </ul>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
-          </div>,
-          document.getElementById("modal-root")
-        )}
+          </div>
+
+          {successMessage && (
+            <div
+              className="fixed bottom-5 right-5 z-50 bg-green-600 text-white px-5 py-3 rounded-lg shadow-lg"
+              onClick={() => setSuccessMessage("")}
+            >
+              {successMessage}
+            </div>
+          )}
+        </div>,
+        document.getElementById("modal-root")
+      )}
 
       {/* Modal Password */}
       {showPasswordModal &&
@@ -945,11 +938,10 @@ export default function RelawanApk() {
                   onClick={handleConfirmExport}
                   disabled={!exportPassword || exporting}
                   className={`w-full sm:w-auto px-5 py-2 rounded-lg bg-blue-900 text-white hover:bg-blue-800 transition 
-                  ${
-                    exporting || !exportPassword
+                  ${exporting || !exportPassword
                       ? "opacity-50 cursor-not-allowed"
                       : ""
-                  }`}
+                    }`}
                 >
                   {exporting ? "Memproses..." : "Konfirmasi"}
                 </button>

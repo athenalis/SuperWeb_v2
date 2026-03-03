@@ -49,7 +49,6 @@ class RelawanApkImport implements ToCollection, WithHeadingRow
 
         $headers = $this->mapHeader($rows->first());
 
-        // ✅ wilayah tidak wajib lagi
         $required = ['nama','nik','no_hp','alamat'];
         $missing = array_values(array_filter($required, fn($k) => !isset($headers[$k])));
         if ($missing) {
@@ -82,7 +81,6 @@ class RelawanApkImport implements ToCollection, WithHeadingRow
                 continue;
             }
 
-            // ORMAS optional
             $ormasId = null;
             if (!empty($data['ormas'])) {
                 $ormasName = strtoupper(trim($data['ormas']));
@@ -105,7 +103,6 @@ class RelawanApkImport implements ToCollection, WithHeadingRow
                 ->where('nik', $nik)
                 ->first();
 
-            // ✅ kalau sudah ada (aktif) => boleh upgrade kunjungan->apk (double job)
             if ($existing && !$existing->trashed()) {
                 if ((int)$existing->paslon_id !== $paslonId) {
                     $this->failedRows[] = [
@@ -116,7 +113,6 @@ class RelawanApkImport implements ToCollection, WithHeadingRow
                     continue;
                 }
 
-                // ✅ cek wilayah harus sama koor (pakai code koor)
                 if ((string)$existing->village_code !== (string)$koor->village_code) {
                     $kel = $existing->village->village ?? 'UNKNOWN';
                     $this->failedRows[] = [
@@ -136,7 +132,6 @@ class RelawanApkImport implements ToCollection, WithHeadingRow
                     continue;
                 }
 
-                // ✅ upgrade jadi double job
                 try {
                     DB::transaction(function () use ($existing, $koor) {
                         $existing->update([
@@ -157,7 +152,6 @@ class RelawanApkImport implements ToCollection, WithHeadingRow
                 continue;
             }
 
-            // CREATE relawan apk baru
             try {
                 DB::transaction(function () use ($data, $ormasId, $koor, $paslonId) {
                     $nameClean = Str::slug((string)$data['nama'], '');
@@ -194,7 +188,6 @@ class RelawanApkImport implements ToCollection, WithHeadingRow
                         'koor_kunjungan_id' => null,
                         'koor_apk_id' => (int)$koor->id,
 
-                        // ✅ wilayah selalu dari koor
                         'province_code' => $koor->province_code,
                         'city_code'     => $koor->city_code,
                         'district_code' => $koor->district_code,

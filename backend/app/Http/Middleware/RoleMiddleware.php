@@ -13,7 +13,6 @@ class RoleMiddleware
     {
         $user = Auth::user();
 
-        // Pecah roles yang dikirim dari route: bisa pakai "|" atau "," (biar fleksibel)
         $allowed = [];
         foreach ($roles as $r) {
             foreach (preg_split('/[|,]/', (string) $r) as $piece) {

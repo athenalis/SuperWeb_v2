@@ -29,7 +29,7 @@ class RelawanKunjunganExport extends DefaultValueBinder implements
     WithColumnFormatting,
     WithCustomValueBinder
 {
-    protected string $mode; // koordinator | admin_paslon
+    protected string $mode; // koordinator, admin_paslon
     protected ?int $koorKunjunganId;
     protected ?int $paslonId;
     protected ?string $namaKoordinator;
@@ -52,7 +52,6 @@ class RelawanKunjunganExport extends DefaultValueBinder implements
 
     public function bindValue(Cell $cell, $value)
     {
-        // Paksa kolom-kolom ini jadi TEXT (biar gak jadi scientific notation / hilang leading zero)
         if (in_array($cell->getColumn(), ['B', 'E', 'G'], true)) {
             $cell->setValueExplicit((string) $value, DataType::TYPE_STRING);
             return true;
@@ -71,7 +70,7 @@ class RelawanKunjunganExport extends DefaultValueBinder implements
         $query = Relawan::query()
             ->with(['user', 'village', 'city', 'district', 'province'])
             ->whereNull('deleted_at')
-            ->where('is_kunjungan', 1); // double job ikut karena is_kunjungan=1
+            ->where('is_kunjungan', 1);
 
         if ($this->mode === 'koordinator') {
             $query->where('koor_kunjungan_id', $this->koorKunjunganId);
@@ -111,7 +110,6 @@ class RelawanKunjunganExport extends DefaultValueBinder implements
                 ];
             }
 
-            // koordinator
             return [
                 $relawan->nama,
                 (string) $relawan->nik,
@@ -162,16 +160,16 @@ class RelawanKunjunganExport extends DefaultValueBinder implements
     {
         if ($this->mode === 'admin_paslon') {
             return [
-                'B' => NumberFormat::FORMAT_TEXT, // NIK
-                'E' => NumberFormat::FORMAT_TEXT, // No HP
-                'G' => NumberFormat::FORMAT_TEXT, // TPS
+                'B' => NumberFormat::FORMAT_TEXT,
+                'E' => NumberFormat::FORMAT_TEXT,
+                'G' => NumberFormat::FORMAT_TEXT,
             ];
         }
 
         return [
-            'B' => NumberFormat::FORMAT_TEXT, // NIK
-            'E' => NumberFormat::FORMAT_TEXT, // No HP
-            'G' => NumberFormat::FORMAT_TEXT, // TPS
+            'B' => NumberFormat::FORMAT_TEXT,
+            'E' => NumberFormat::FORMAT_TEXT,
+            'G' => NumberFormat::FORMAT_TEXT,
         ];
     }
 

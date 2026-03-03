@@ -15,9 +15,6 @@ class VisitDeleted extends Notification
     protected $relawanName;
     protected $deleterRole;
 
-    /**
-     * Create a new notification instance.
-     */
     public function __construct($visitName, $relawanName, $deleterRole)
     {
         $this->visitName = $visitName;
@@ -46,7 +43,7 @@ class VisitDeleted extends Notification
             'title' => 'Kunjungan Dihapus',
             'message' => "Relawan {$this->relawanName} menghapus kunjungan {$this->visitName}.",
             'type' => 'visit_deleted',
-            'redirect_url' => null // No redirect since it's deleted
+            'redirect_url' => null
         ];
     }
 }

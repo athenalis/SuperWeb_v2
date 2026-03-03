@@ -29,6 +29,6 @@ class Village extends Model
 
     public function voteCounts()
     {
-        return $this->hasMany(voteCounts::class);
+        return $this->hasMany(VoteCount::class);
     }
 }

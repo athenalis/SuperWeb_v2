@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 class ApkRequestStatusHistory extends Model
 {
     protected $table = 'apk_request_status_histories';
-    public $timestamps = false; // karena cuma punya created_at
+    public $timestamps = false;
 
     protected $fillable = ['apk_request_id', 'status_id', 'changed_by', 'note'];
 

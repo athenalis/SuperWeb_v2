@@ -13,13 +13,11 @@ class ContentPlanInfluencer extends Model
         'influencer_id',
     ];
 
-    // RELASI: influencer
     public function influencer()
     {
         return $this->belongsTo(Influencer::class, 'influencer_id');
     }
 
-    // RELASI: content plan
     public function contentPlan()
     {
         return $this->belongsTo(ContentPlan::class, 'content_plan_id');

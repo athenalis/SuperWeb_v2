@@ -36,6 +36,12 @@ export default function InputRelawan({ onClose }) {
   const [isNikBlocked, setIsNikBlocked] = useState(false);
   const [errors, setErrors] = useState({});
 
+  // ✅ NEW: simpan draft data dari check-nik (deleted=true)
+  const [restoreDraft, setRestoreDraft] = useState(null);
+
+  // ✅ NEW: lock input saat restore preview / sedang restore
+  const isFormLocked = isRestoreMode || isRestoring;
+
   /* =========================
      VALIDASI PER FIELD
   ========================= */
@@ -50,7 +56,7 @@ export default function InputRelawan({ onClose }) {
         if (value.length !== 16) return "NIK wajib 16 digit";
         break;
 
-      case "no_hp":
+      case "no_hp": {
         if (!/^\+?\d*$/.test(value))
           return "No HP hanya boleh angka atau +62";
 
@@ -66,6 +72,7 @@ export default function InputRelawan({ onClose }) {
         if (normalized.length < 10 || normalized.length > 13)
           return "No HP wajib 10–13 digit";
         break;
+      }
 
       // ✅ TPS validation dihapus
 
@@ -99,6 +106,9 @@ export default function InputRelawan({ onClose }) {
      HANDLE CHANGE
   ========================= */
   const handleChange = (e) => {
+    // ✅ NEW: kalau sudah restore preview, jangan boleh ubah isi form
+    if (isFormLocked) return;
+
     const { name, value } = e.target;
 
     setForm((prev) => ({
@@ -123,9 +133,14 @@ export default function InputRelawan({ onClose }) {
   };
 
   /* =========================
-     CHECK NIK
+     CHECK NIK (RESTORE MODE)
+     ✅ samakan dengan koordinator:
+     - kalau soft deleted, backend kirim data lengkap di data.data
   ========================= */
   const checkNik = async (nik) => {
+    // ✅ NEW: kalau sudah restore preview, jangan cek ulang
+    if (isFormLocked) return;
+
     try {
       const res = await api.post("/relawan/check-nik", { nik });
       const data = res.data;
@@ -138,12 +153,18 @@ export default function InputRelawan({ onClose }) {
 
       if (data.exists && data.deleted === true) {
         setRestoreNik(nik);
+
+        // ✅ NEW: simpan draft untuk autofill (samakan koordinator)
+        setRestoreDraft(data?.data || null);
+
         setShowRestoreConfirm(true);
         setIsNikBlocked(false);
         return;
       }
 
       setIsNikBlocked(false);
+      setRestoreDraft(null);
+      setRestoreNik(null);
     } catch (err) {
       console.error(err);
       toast.error("Gagal cek NIK");
@@ -151,52 +172,46 @@ export default function InputRelawan({ onClose }) {
   };
 
   /* =========================
-     RESTORE
-     ✅ sukses: isi form + masuk restore mode
-     ❌ TIDAK toast akun & TIDAK redirect di sini
+     RESTORE (PREVIEW SAJA)
+     ✅ hanya autofill dari restoreDraft
+     ❌ JANGAN panggil /restore-by-nik di sini
   ========================= */
   const handleRestore = async () => {
     if (!restoreNik) return;
 
+    const r = restoreDraft;
+
+    if (!r || typeof r !== "object") {
+      toast.error(
+        "Data restore tidak tersedia dari check-nik. Pastikan response check-nik (deleted=true) mengandung no_hp/alamat/wilayah/ormas.",
+        { id: "restore-relawan" }
+      );
+      return;
+    }
+
     setIsRestoring(true);
-    toast.loading("Mengaktifkan relawan...", { id: "restore-relawan" });
-
     try {
-      const res = await api.post("/relawan/restore", { nik: restoreNik });
+      setForm((prev) => ({
+        ...prev,
+        nama: r?.nama ?? "",
+        nik: r?.nik ?? restoreNik ?? "",
+        no_hp: r?.no_hp ?? "",
+        alamat: r?.alamat ?? "",
+        province_code: r?.province_code ?? 31,
+        city_code: r?.city_code ?? prev.city_code ?? "",
+        district_code: r?.district_code ?? prev.district_code ?? "",
+        village_code: r?.village_code ?? prev.village_code ?? "",
+        ormas_id: r?.ormas_id ?? "",
+      }));
 
-      const relawan = res?.data?.data?.relawan;
-      const user = res?.data?.data?.user || relawan?.user;
-
-      if (relawan) {
-        setForm({
-          nama: relawan.nama ?? "",
-          nik: relawan.nik ?? "",
-          no_hp: relawan.no_hp ?? "",
-          // ✅ TPS dihapus dari restore
-          alamat: relawan.alamat ?? "",
-          province_code: relawan.province_code ?? 31,
-          city_code: relawan.city_code ?? "",
-          district_code: relawan.district_code ?? "",
-          village_code: relawan.village_code ?? "",
-          ormas_id: relawan.ormas_id ?? "",
-        });
-      }
-
+      // ✅ form akan terkunci setelah ini
       setIsRestoreMode(true);
-      setRestoredUser(user || null);
       setShowRestoreConfirm(false);
 
       toast.success(
-        "Data relawan berhasil dimuat. Silakan periksa lalu klik Simpan.",
-        {
-          id: "restore-relawan",
-          duration: 3000,
-        }
+        "Data relawan berhasil dimuat. Silakan klik Simpan untuk mengaktifkan.",
+        { id: "restore-relawan", duration: 3500 }
       );
-    } catch (err) {
-      console.error(err);
-      const msg = err?.response?.data?.message || "Gagal mengaktifkan relawan";
-      toast.error(msg, { id: "restore-relawan" });
     } finally {
       setIsRestoring(false);
     }
@@ -248,7 +263,9 @@ export default function InputRelawan({ onClose }) {
 
       if (akun?.email && akun?.password) {
         toast.success(
-          `${isApkPage ? "Relawan APK" : "Relawan"} berhasil dibuat!\nEmail: ${akun.email}\nPassword: ${akun.password}`,
+          `${isApkPage ? "Relawan APK" : "Relawan"} berhasil dibuat!\nEmail: ${
+            akun.email
+          }\nPassword: ${akun.password}`,
           {
             duration: 6000,
             style: {
@@ -287,7 +304,7 @@ export default function InputRelawan({ onClose }) {
     );
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!validateAll()) {
@@ -300,42 +317,68 @@ export default function InputRelawan({ onClose }) {
       return;
     }
 
-    // ✅ kalau restore mode -> toast sukses + redirect saat klik SIMPAN
+    // ✅ restore mode: aktifkan beneran DI SINI saat klik Simpan (samakan koordinator)
     if (isRestoreMode) {
-    // ✅ ambil dari beberapa kemungkinan key (biar ga gampang null)
-    const email =
-      restoredUser?.email ||
-      restoredUser?.username ||
-      restoredUser?.akun ||
-      restoredUser?.user?.email;
+      try {
+        toast.loading("Menyimpan & mengaktifkan relawan...", {
+          id: "restore-save-relawan",
+        });
 
-    const password =
-      restoredUser?.password ||
-      restoredUser?.new_password ||
-      restoredUser?.plain_password ||
-      restoredUser?.generated_password ||
-      restoredUser?.user?.password;
+        const res = await api.post("/relawan/restore", {
+          nik: form.nik,
+          nama: form.nama,
+          no_hp: form.no_hp,
+          alamat: form.alamat,
+          // wilayah bisa ikut terkirim (walau sekarang locked dari /me/wilayah)
+          province_code: form.province_code,
+          city_code: form.city_code,
+          district_code: form.district_code,
+          village_code: form.village_code,
+          ormas_id: form.ormas_id,
+          // is_apk optional: biar aman utk case tertentu (walau role apk_koordinator pasti set apk=1 di backend)
+          ...(isApkPage ? { is_apk: 1 } : {}),
+        });
 
-    // ✅ toast multi-line + style konsisten
-    toast.success(
-      `Relawan berhasil diaktifkan!\n${
-        email ? `Email: ${email}` : "Email: -"
-      }\n${password ? `Password: ${password}` : "Password: - (tidak dikirim backend)"}`,
-      {
-        duration: 7000,
-        style: {
-          whiteSpace: "pre-line",
-          background: "#1e293b",
-          color: "white",
-          padding: "14px",
-          borderRadius: "10px",
-        },
+        const payload = res?.data?.data ?? {};
+        const user = payload?.user || null;
+
+        setRestoredUser(user || null);
+
+        const email = user?.email || user?.username;
+        const password = user?.password || user?.plain_password;
+
+        toast.success(
+          `Relawan APK berhasil diaktifkan!\n${
+            email ? `Email: ${email}` : "Email: -"
+          }\n${
+            password
+              ? `Password: ${password}`
+              : "Password: - (tidak dikirim backend)"
+          }`,
+          {
+            id: "restore-save-relawan",
+            duration: 7000,
+            style: { whiteSpace: "pre-line" },
+          }
+        );
+
+        queryClient.invalidateQueries([isApkPage ? "relawan-apk" : "relawan"]);
+        navigate(redirectPath, { replace: true });
+
+        // reset restore state
+        setIsRestoreMode(false);
+        setRestoreDraft(null);
+        setRestoreNik(null);
+        return;
+      } catch (err) {
+        console.error(err?.response?.data || err);
+        toast.error(
+          err?.response?.data?.message || "Gagal mengaktifkan relawan",
+          { id: "restore-save-relawan" }
+        );
+        return;
       }
-    );
-
-    navigate(redirectPath, { replace: true });
-    return;
-  }
+    }
 
     mutation.mutate();
   };
@@ -364,16 +407,21 @@ export default function InputRelawan({ onClose }) {
               <input
                 name="nik"
                 value={form.nik}
+                disabled={isFormLocked} // ✅ NEW
                 onChange={(e) => {
+                  if (isFormLocked) return; // ✅ NEW
                   const value = e.target.value;
                   if (!/^\d*$/.test(value)) return;
                   if (value.length > 16) return;
                   handleChange(e);
                 }}
                 onBlur={() => {
+                  if (isFormLocked) return; // ✅ NEW
                   if (form.nik.length === 16) checkNik(form.nik);
                 }}
-                className={baseInput}
+                className={`${baseInput} ${
+                  isFormLocked ? "bg-white cursor-not-allowed" : ""
+                }`}
                 inputMode="numeric"
                 placeholder="Masukkan NIK"
               />
@@ -383,8 +431,11 @@ export default function InputRelawan({ onClose }) {
               <input
                 name="nama"
                 value={form.nama}
+                disabled={isFormLocked} // ✅ NEW
                 onChange={handleChange}
-                className={baseInput}
+                className={`${baseInput} ${
+                  isFormLocked ? "bg-white cursor-not-allowed" : ""
+                }`}
                 placeholder="Masukkan nama lengkap"
               />
             </Field>
@@ -394,15 +445,19 @@ export default function InputRelawan({ onClose }) {
             <input
               name="no_hp"
               value={form.no_hp}
+              disabled={isFormLocked} // ✅ NEW
               onChange={(e) => {
+                if (isFormLocked) return; // ✅ NEW
                 const value = e.target.value;
-                if (!/^\d*$/.test(value)) return;
-                if (value.length > 13) return;
+                if (!/^\+?\d*$/.test(value)) return;
+                if (value.length > 14) return;
                 handleChange(e);
               }}
-              className={baseInput}
+              className={`${baseInput} ${
+                isFormLocked ? "bg-white cursor-not-allowed" : ""
+              }`}
               inputMode="numeric"
-              placeholder="Masukkan No. HP"
+              placeholder="Cth: 0821xxxx, 62821xxxx, +62821xxxx"
             />
           </Field>
 
@@ -412,8 +467,11 @@ export default function InputRelawan({ onClose }) {
             <textarea
               name="alamat"
               value={form.alamat}
+              disabled={isFormLocked} // ✅ NEW
               onChange={handleChange}
-              className={baseInput}
+              className={`${baseInput} ${
+                isFormLocked ? "bg-white cursor-not-allowed" : ""
+              }`}
               placeholder="Masukkan alamat lengkap"
             />
           </Field>
@@ -485,10 +543,12 @@ export default function InputRelawan({ onClose }) {
                 placeholder="Pilih Ormas"
                 isClearable
                 isSearchable
+                isDisabled={isFormLocked} // ✅ NEW: lock juga saat restore preview
                 value={
                   ormasOptions.find((o) => o.value === form.ormas_id) || null
                 }
                 onChange={(selected) => {
+                  if (isFormLocked) return; // ✅ NEW
                   setForm((prev) => ({
                     ...prev,
                     ormas_id: selected ? selected.value : "",
@@ -504,10 +564,12 @@ export default function InputRelawan({ onClose }) {
                     ...base,
                     minHeight: "48px",
                     borderRadius: "8px",
-                    backgroundColor: "#ffffff",
+                    backgroundColor: isFormLocked ? "#ffffff" : "#ffffff",
                     borderColor: state.isFocused ? "#cbd5e1" : "#e5e7eb",
                     boxShadow: "none",
                     "&:hover": { borderColor: "#cbd5e1" },
+                    cursor: isFormLocked ? "not-allowed" : "default",
+                    opacity: isFormLocked ? 0.9 : 1,
                   }),
                   valueContainer: (base) => ({ ...base, padding: "0 16px" }),
                   placeholder: (base) => ({ ...base, color: "#94a3b8" }),
@@ -577,7 +639,7 @@ export default function InputRelawan({ onClose }) {
                 disabled={isRestoring}
                 className="px-4 py-2 rounded-lg bg-blue-900 text-white"
               >
-                {isRestoring ? "Mengaktifkan..." : "Ya, Aktifkan"}
+                {isRestoring ? "Memuat..." : "Ya, Aktifkan"}
               </button>
             </div>
           </div>

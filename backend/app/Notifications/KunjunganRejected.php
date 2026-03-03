@@ -12,9 +12,6 @@ class KunjunganRejected extends Notification
     protected $visit;
     protected $message;
 
-    /**
-     * Create a new notification instance.
-     */
     public function __construct($visit, $message)
     {
         $this->visit = $visit;

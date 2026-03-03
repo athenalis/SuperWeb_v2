@@ -18,11 +18,6 @@ class RelawanImport implements ToCollection, WithHeadingRow
     public array $failedRows = [];
     public array $createdAccounts = [];
 
-    /**
-     * =========================
-     * HEADER MAPPING (MUDAH DITAMBAH)
-     * =========================
-     */
     protected array $headerMap = [
         'nama'   => ['nama', 'name', 'nama_lengkap'],
         'nik'    => ['nik', 'no_nik'],
@@ -41,11 +36,6 @@ class RelawanImport implements ToCollection, WithHeadingRow
             throw new \Exception('Akun koordinator tidak valid');
         }
 
-        /**
-         * =========================
-         * VALIDASI HEADER
-         * =========================
-         */
         $excelHeaders = collect($rows->first()->keys())
             ->map(fn($h) => strtolower(trim($h)))
             ->toArray();
@@ -64,37 +54,17 @@ class RelawanImport implements ToCollection, WithHeadingRow
             );
         }
 
-        /**
-         * =========================
-         * LOOP DATA
-         * =========================
-         */
         foreach ($rows as $index => $row) {
             $excelRowNumber = $index + 2;
             $errors = [];
 
-            /**
-             * =========================
-             * SKIP ROW BENAR-BENAR KOSONG
-             * =========================
-             */
             $rawRow = collect($row)->map(fn($v) => trim((string) $v));
             if ($rawRow->filter()->isEmpty()) {
                 continue;
             }
 
-            /**
-             * =========================
-             * MAPPING HEADER
-             * =========================
-             */
             $row = $this->mapRow($row);
 
-            /**
-             * =========================
-             * VALIDASI
-             * =========================
-             */
             if (empty($row['nama']))   $errors[] = 'Nama wajib diisi';
             if (empty($row['nik']))    $errors[] = 'NIK wajib diisi';
             if (empty($row['no_hp']))  $errors[] = 'No HP wajib diisi';
@@ -105,11 +75,6 @@ class RelawanImport implements ToCollection, WithHeadingRow
                 $errors[] = 'NIK sudah terdaftar';
             }
 
-            /**
-             * =========================
-             * ORMAS
-             * =========================
-             */
             $ormasId = null;
             if (!empty($row['ormas'])) {
                 $ormasName = strtoupper($row['ormas']);
@@ -121,16 +86,10 @@ class RelawanImport implements ToCollection, WithHeadingRow
                 }
             }
 
-            /**
-             * =========================
-             * NORMALISASI
-             * =========================
-             */
             $tpsNormalized = !empty($row['tps'])
                 ? str_pad($row['tps'], 3, '0', STR_PAD_LEFT)
                 : null;
 
-            // ⬅️ NORMALISASI NO HP KE FORMAT 08xxxxxxxxx
             $row['no_hp'] = $this->normalizePhoneTo08($row['no_hp']);
 
             if (!empty($errors)) {
@@ -142,11 +101,6 @@ class RelawanImport implements ToCollection, WithHeadingRow
                 continue;
             }
 
-            /**
-             * =========================
-             * SIMPAN DB
-             * =========================
-             */
             DB::beginTransaction();
             try {
                 $nameClean = strtolower(str_replace(' ', '', $row['nama']));
@@ -198,11 +152,6 @@ class RelawanImport implements ToCollection, WithHeadingRow
         }
     }
 
-    /**
-     * =========================
-     * HELPER
-     * =========================
-     */
     protected function findHeader(array $excelHeaders, array $aliases): ?string
     {
         foreach ($aliases as $alias) {
@@ -233,37 +182,22 @@ class RelawanImport implements ToCollection, WithHeadingRow
         return $mapped;
     }
 
-    /**
-     * =========================
-     * NORMALISASI NO HP
-     * HASIL SELALU 08xxxxxxxxx
-     * =========================
-     */
     protected function normalizePhoneTo08(?string $phone): ?string
     {
         if (!$phone) return null;
 
-        // hapus semua selain angka
         $phone = preg_replace('/[^0-9]/', '', $phone);
 
-        /**
-         * STEP 1: normalisasi ke format nasional TANPA dobel
-         */
-        // +62xxxxxxxxx atau 62xxxxxxxxx
         if (str_starts_with($phone, '62')) {
             $phone = substr($phone, 2);
         }
 
-        // 8xxxxxxxxx
         if (str_starts_with($phone, '8')) {
             $phone = '0' . $phone;
         }
 
-        /**
-         * STEP 2: pastikan diawali 08
-         */
         if (!str_starts_with($phone, '08')) {
-            return null; // format aneh → bisa kamu jadikan error kalau mau
+            return null;
         }
 
         return $phone;

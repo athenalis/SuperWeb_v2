@@ -28,9 +28,6 @@ class PetaPartaiController extends Controller
         100024 => '#111111',
     ];
 
-    /* ======================================
-       🔹 MAP PER KOTA
-    ====================================== */
     public function perKota()
     {
         $rows = PartyVote::select(
@@ -73,9 +70,6 @@ class PetaPartaiController extends Controller
         ]);
     }
 
-    /* ======================================
-       🔹 MAP PER KECAMATAN
-    ====================================== */
     public function perKecamatan()
     {
         $rows = PartyVote::select(

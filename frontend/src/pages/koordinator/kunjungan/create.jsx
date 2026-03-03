@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@iconify/react";
@@ -9,6 +8,8 @@ import api from "../../../lib/axios";
 export default function InputKoordinator({ onClose }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const redirectPath = "/koordinator/kunjungan";
 
   const [form, setForm] = useState({
     nama: "",
@@ -25,9 +26,17 @@ export default function InputKoordinator({ onClose }) {
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [restoreNik, setRestoreNik] = useState(null);
   const [isRestoring, setIsRestoring] = useState(false);
-  const [restoredUser, setRestoredUser] = useState(null);
-  const [isRestoreMode, setIsRestoreMode] = useState(false);
 
+  // ✅ sama seperti APK
+  const [isRestoreMode, setIsRestoreMode] = useState(false);
+  const [restoreDraft, setRestoreDraft] = useState(null);
+
+  // ✅ pending wilayah supaya value ke-set setelah options siap
+  const [pendingDistrict, setPendingDistrict] = useState("");
+  const [pendingVillage, setPendingVillage] = useState("");
+
+  // ✅ NEW: lock input saat sudah autofill restore
+  const isFormLocked = isRestoreMode || isRestoring;
 
   /* =========================
      VALIDASI PER FIELD
@@ -43,25 +52,22 @@ export default function InputKoordinator({ onClose }) {
         if (value.length !== 16) return "NIK wajib 16 digit";
         break;
 
-case "no_hp": 
-  // boleh angka dan + (khusus di awal)
-  if (!/^\+?\d*$/.test(value))
-    return "No HP hanya boleh angka atau +62";
+      case "no_hp": {
+        if (!/^\+?\d*$/.test(value)) return "No HP hanya boleh angka atau +62";
 
-  // normalisasi untuk hitung panjang
-  const normalized = value.startsWith("+62")
-    ? "0" + value.slice(3)
-    : value.startsWith("62")
-    ? "0" + value.slice(2)
-    : value;
+        const normalized = value.startsWith("+62")
+          ? "0" + value.slice(3)
+          : value.startsWith("62")
+          ? "0" + value.slice(2)
+          : value;
 
-  if (!/^08\d+$/.test(normalized))
-    return "No HP harus diawali 08, 62, atau +62";
+        if (!/^08\d+$/.test(normalized))
+          return "No HP harus diawali 08, 62, atau +62";
 
-  if (normalized.length < 10 || normalized.length > 13)
-    return "No HP wajib 10–13 digit";
-
-  break;
+        if (normalized.length < 10 || normalized.length > 13)
+          return "No HP wajib 10–13 digit";
+        break;
+      }
 
       case "alamat":
         if (!value.trim()) return "Alamat wajib diisi";
@@ -89,6 +95,9 @@ case "no_hp":
      HANDLE CHANGE
   ========================= */
   const handleChange = (e) => {
+    // ✅ NEW: kalau sudah restore preview, jangan boleh ubah isi form
+    if (isFormLocked) return;
+
     const { name, value } = e.target;
 
     setForm((prev) => ({
@@ -112,146 +121,251 @@ case "no_hp":
     return Object.keys(newErrors).length === 0;
   };
 
+  /* =========================
+     CHECK NIK (APK STYLE)
+  ========================= */
   const checkNik = async (nik) => {
-    const res = await api.post("/koordinator/check-nik", { nik });
-  
-    if (res.data.exists && res.data.deleted) {
-      setRestoreNik(nik);
-      setShowRestoreConfirm(true);
-    }
-  };  
+    // ✅ NEW: kalau sudah restore preview, jangan cek ulang (biar ga ganggu UX)
+    if (isFormLocked) return;
 
+    try {
+      const res = await api.post("/koordinator/check-nik", { nik });
+      const data = res.data;
+
+      if (data.exists && data.deleted === false) {
+        toast.error(data.message || "NIK sudah terdaftar dan aktif");
+        return;
+      }
+
+      if (data.exists && data.deleted === true) {
+        setRestoreNik(nik);
+        setRestoreDraft(data?.data || null);
+        setShowRestoreConfirm(true);
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Gagal cek NIK");
+    }
+  };
+
+  /* =========================
+     RESTORE (PREVIEW SAJA) - APK STYLE
+  ========================= */
   const handleRestore = async () => {
     if (!restoreNik) return;
-  
+
+    const k = restoreDraft;
+
+    if (!k || typeof k !== "object") {
+      toast.error(
+        "Data restore tidak tersedia dari check-nik. Pastikan response check-nik (deleted=true) mengandung no_hp/alamat/wilayah.",
+        { id: "restore-koordinator-kunjungan" }
+      );
+      return;
+    }
+
     setIsRestoring(true);
-  
     try {
-      const res = await api.post("/koordinator/restore", {
-        nik: restoreNik,
-      });
-  
-      const { koordinator, user } = res.data.data;
-  
-      setForm({
-        nama: koordinator.nama,
-        nik: koordinator.nik,
-        no_hp: koordinator.no_hp,
-        alamat: koordinator.alamat,
-        province_code: koordinator.province_code,
-        city_code: koordinator.city_code,
-        district_code: koordinator.district_code,
-        village_code: koordinator.village_code,
-      });
-  
+      // set data dasar + city dulu
+      setForm((prev) => ({
+        ...prev,
+        nama: k?.nama ?? "",
+        nik: k?.nik ?? restoreNik ?? "",
+        no_hp: k?.no_hp ?? "",
+        alamat: k?.alamat ?? "",
+        province_code: k?.province_code ?? 31,
+        city_code: k?.city_code ?? "",
+        district_code: "",
+        village_code: "",
+      }));
+
+      // simpan pending agar di-set saat options sudah siap
+      setPendingDistrict(k?.district_code ?? "");
+      setPendingVillage(k?.village_code ?? "");
+
+      // ✅ form akan terkunci setelah ini
       setIsRestoreMode(true);
-      setRestoredUser(user);
       setShowRestoreConfirm(false);
-    } catch (err) {
-      console.error(err.response?.data);
-      toast.error("Gagal mengaktifkan koordinator");
+
+      // ✅ ubah copy sesuai requirement (tidak bisa edit)
+      toast.success(
+        "Data koordinator berhasil dimuat. Silakan klik Simpan untuk mengaktifkan.",
+        { id: "restore-koordinator-kunjungan", duration: 3500 }
+      );
     } finally {
       setIsRestoring(false);
     }
-  };  
+  };
 
   /* =========================
      WILAYAH API
   ========================= */
   const { data: cities = [] } = useQuery({
     queryKey: ["cities", form.province_code],
-    queryFn: async () => (await api.get(`/wilayah/cities/${form.province_code}`)).data,
+    queryFn: async () =>
+      (await api.get(`/wilayah/cities/${form.province_code}`)).data,
     enabled: !!form.province_code,
   });
 
   const { data: districts = [] } = useQuery({
     queryKey: ["districts", form.city_code],
-    queryFn: async () => (await api.get(`/wilayah/districts/${form.city_code}`)).data,
+    queryFn: async () =>
+      (await api.get(`/wilayah/districts/${form.city_code}`)).data,
     enabled: !!form.city_code,
   });
 
   const { data: villages = [] } = useQuery({
     queryKey: ["villages", form.district_code],
-    queryFn: async () => (await api.get(`/wilayah/villages/${form.district_code}`)).data,
+    queryFn: async () =>
+      (await api.get(`/wilayah/villages/${form.district_code}`)).data,
     enabled: !!form.district_code,
   });
 
   /* =========================
-     SUBMIT
+     ✅ APPLY PENDING DISTRICT
   ========================= */
-     const mutation = useMutation({
-  mutationFn: async () => api.post("/koordinator", form),
-onSuccess: (res) => {
-  queryClient.invalidateQueries(["koordinators"]);
+  useEffect(() => {
+    if (!pendingDistrict) return;
+    if (!form.city_code) return;
 
-  const akun = res.data.data.user; 
-
-  if (restoredUser) {
-    toast.success(
-      `Koordinator berhasil diaktifkan!\nEmail: ${restoredUser.email}\nPassword: ${restoredUser.password}`,
-      {
-        duration: 6000,
-        style: { whiteSpace: "pre-line" },
-      }
+    const exists = districts.some(
+      (d) => String(d.district_code) === String(pendingDistrict)
     );
+    if (!exists) return;
 
-    setRestoredUser(null);
-  } else {
-    // fallback: create baru
-    const akun = res.data.data.user;
+    setForm((prev) => ({
+      ...prev,
+      district_code: pendingDistrict,
+    }));
+    setPendingDistrict("");
+  }, [pendingDistrict, districts, form.city_code]);
 
-    toast.success(
-      `Koordinator berhasil dibuat!\nEmail: ${akun.email}\nPassword: ${akun.password}`,
-      {
-        duration: 5000,
-        style: { whiteSpace: "pre-line" },
-      }
+  /* =========================
+     ✅ APPLY PENDING VILLAGE
+  ========================= */
+  useEffect(() => {
+    if (!pendingVillage) return;
+    if (!form.district_code) return;
+
+    const exists = villages.some(
+      (v) => String(v.village_code) === String(pendingVillage)
     );
-  }
+    if (!exists) return;
 
-  navigate("/koordinator/kunjungan"); // hanya ini
+    setForm((prev) => ({
+      ...prev,
+      village_code: pendingVillage,
+    }));
+    setPendingVillage("");
+  }, [pendingVillage, villages, form.district_code]);
 
-  },
-  onError: (err) => {
-     console.log("ERROR:", err.response?.data); // 🔥 DEBUG PENTING
+  /* =========================
+     SUBMIT CREATE (NON-RESTORE)
+  ========================= */
+  const mutation = useMutation({
+    mutationFn: async () => api.post("/koordinator", form),
 
-    const errors = err.response?.data?.errors;
+    onSuccess: (res) => {
+      queryClient.invalidateQueries(["koordinators"]);
 
-    if (errors) {
-      // tampilkan semua pesan validasi
-      Object.values(errors).forEach((msgList) => {
-        toast.error(msgList[0]);
-      });
+      const akun = res?.data?.data?.user;
+
+      if (akun?.email && akun?.password) {
+        toast.success(
+          `Koordinator berhasil dibuat!\nEmail: ${akun.email}\nPassword: ${akun.password}`,
+          { duration: 6000, style: { whiteSpace: "pre-line" } }
+        );
+      } else {
+        toast.success("Koordinator berhasil dibuat!", { duration: 3000 });
+        console.log("Create response:", res?.data);
+      }
+
+      navigate(redirectPath, { replace: true });
+    },
+
+    onError: (err) => {
+      console.log("ERROR:", err.response?.data);
+      const errors = err.response?.data?.errors;
+
+      if (errors) {
+        Object.values(errors).forEach((msgList) => {
+          toast.error(msgList[0]);
+        });
+        return;
+      }
+
+      toast.error(err.response?.data?.message || "Gagal menyimpan data");
+    },
+  });
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    // ✅ restore mode: form udah kebentuk, tapi tetap validasi aja (minim perubahan)
+    if (!validateAll()) {
+      toast.error("Periksa kembali form Anda");
       return;
     }
 
-    toast.error(err.response?.data?.message || "Gagal menyimpan data");
-  },
-});
+    // ✅ restore mode: aktifkan beneran DI SINI saat klik Simpan
+    if (isRestoreMode) {
+      try {
+        toast.loading("Menyimpan & mengaktifkan koordinator...", {
+          id: "restore-save-koor-kunjungan",
+        });
 
-  const handleSubmit = (e) => {
-  e.preventDefault();
-  if (!validateAll()) {
-    toast.error("Periksa kembali form Anda");
-    return;
-  }
-  if (isRestoreMode) {
-    toast.success(
-      `Koordinator berhasil diaktifkan!\nEmail: ${restoredUser.email}\nPassword: ${restoredUser.password}`,
-      { duration: 6000, style: { whiteSpace: "pre-line" } }
-    );
+        const res = await api.post("/koordinator/restore", {
+          nik: form.nik,
+          nama: form.nama,
+          no_hp: form.no_hp,
+          alamat: form.alamat,
+          province_code: form.province_code,
+          city_code: form.city_code,
+          district_code: form.district_code,
+          village_code: form.village_code,
+        });
 
-    navigate("/koordinator/kunjungan");
-    return;
-  }
-  mutation.mutate();
-};
+        const payload = res?.data?.data ?? {};
+        const user = payload?.user || null;
+
+        const email = user?.email || user?.username;
+        const password = user?.password || user?.plain_password;
+
+        toast.success(
+          `Koordinator Kunjungan berhasil diaktifkan!\n${email ? `Email: ${email}` : "Email: -"}\n${
+            password ? `Password: ${password}` : "Password: - (tidak dikirim backend)"
+          }`,
+          {
+            id: "restore-save-koor-kunjungan",
+            duration: 7000,
+            style: { whiteSpace: "pre-line" },
+          }
+        );
+
+        queryClient.invalidateQueries(["koordinators"]);
+        navigate(redirectPath, { replace: true });
+
+        // bersihin state restore
+        setIsRestoreMode(false);
+        setRestoreDraft(null);
+        setRestoreNik(null);
+        return;
+      } catch (err) {
+        console.error(err.response?.data || err);
+        toast.error(
+          err?.response?.data?.message || "Gagal mengaktifkan koordinator",
+          { id: "restore-save-koor-kunjungan" }
+        );
+        return;
+      }
+    }
+
+    mutation.mutate();
+  };
+
   /* =========================
      STYLE
   ========================= */
-  const baseInput =
-    "w-full border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none";
-
   const baseSelect =
     "w-full appearance-none border rounded-lg px-4 py-2 pr-10 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none";
 
@@ -263,68 +377,82 @@ onSuccess: (res) => {
         <h2 className="text-4xl text-blue-900 font-bold mb-6 text-center">
           Input Koordinator
         </h2>
-  
-        <form onSubmit={handleSubmit} noValidate className="space-y-5">
-  
-            <Field label="NIK" required error={errors.nik}>
-              <input
-                name="nik"
-                value={form.nik}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  if (!/^\d*$/.test(value)) return;
-                  if (value.length > 16) return;
-                  handleChange(e);
-                }}
-                onBlur={() => {
-                  if (form.nik.length === 16) {
-                    checkNik(form.nik);
-                  }
-                }}
-                className="w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400"
-                inputMode="numeric"
-                placeholder="Masukkan NIK"
-              />
-            </Field>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <form onSubmit={handleSubmit} noValidate className="space-y-5">
+          <Field label="NIK" required error={errors.nik}>
+            <input
+              name="nik"
+              value={form.nik}
+              disabled={isFormLocked} // ✅ NEW
+              onChange={(e) => {
+                if (isFormLocked) return; // ✅ NEW
+                const value = e.target.value;
+                if (!/^\d*$/.test(value)) return;
+                if (value.length > 16) return;
+                handleChange(e);
+              }}
+              onBlur={() => {
+                if (isFormLocked) return; // ✅ NEW
+                if (form.nik.length === 16) {
+                  checkNik(form.nik);
+                }
+              }}
+              className={`w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400 ${
+                isFormLocked ? "bg-white cursor-not-allowed" : ""
+              }`}
+              inputMode="numeric"
+              placeholder="Masukkan NIK"
+            />
+          </Field>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Field label="Nama Lengkap" required error={errors.nama}>
               <input
                 name="nama"
                 value={form.nama}
+                disabled={isFormLocked} // ✅ NEW
                 onChange={handleChange}
-                className="w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400"
+                className={`w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400 ${
+                  isFormLocked ? "bg-white cursor-not-allowed" : ""
+                }`}
                 placeholder="Masukkan Nama Lengkap"
               />
             </Field>
-  
+
             <Field label="No HP" required error={errors.no_hp}>
               <input
                 name="no_hp"
                 value={form.no_hp}
+                disabled={isFormLocked} // ✅ NEW
                 onChange={(e) => {
+                  if (isFormLocked) return; // ✅ NEW
                   const value = e.target.value;
                   if (!/^\+?\d*$/.test(value)) return;
                   if (value.length > 14) return;
                   handleChange(e);
                 }}
-                className="w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400"
+                className={`w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400 ${
+                  isFormLocked ? "bg-white cursor-not-allowed" : ""
+                }`}
                 inputMode="numeric"
                 placeholder="Cth: 0821xxxx, 62821xxxx, +62821xxxx"
               />
             </Field>
           </div>
-  
+
           <Field label="Alamat" required error={errors.alamat}>
             <textarea
               name="alamat"
               value={form.alamat}
+              disabled={isFormLocked} // ✅ NEW
               onChange={handleChange}
-              className="w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400"
+              className={`w-full text-md border border-slate-400 pl-5 pr-5 py-3 rounded-lg outline-none transition-all duration-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-600 placeholder:text-gray-400 ${
+                isFormLocked ? "bg-white cursor-not-allowed" : ""
+              }`}
               placeholder="Masukkan alamat anda"
             />
           </Field>
-  
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Field label="Provinsi">
               <select
@@ -335,7 +463,7 @@ onSuccess: (res) => {
                 <option>DKI JAKARTA</option>
               </select>
             </Field>
-  
+
             <SelectField
               label="Kota/Kabupaten"
               required
@@ -347,9 +475,9 @@ onSuccess: (res) => {
               placeholder="Pilih Kota/Kabupaten"
               valueKey="city_code"
               labelKey="city"
-              
+              disabled={isFormLocked} // ✅ NEW (kunci saat restore preview)
             />
-  
+
             <SelectField
               label="Kecamatan"
               required
@@ -359,11 +487,11 @@ onSuccess: (res) => {
               onChange={handleChange}
               options={districts}
               placeholder="Pilih Kecamatan"
-              disabled={!form.city_code}
+              disabled={isFormLocked || !form.city_code} // ✅ NEW
               valueKey="district_code"
               labelKey="district"
             />
-  
+
             <SelectField
               label="Kelurahan"
               required
@@ -373,12 +501,12 @@ onSuccess: (res) => {
               onChange={handleChange}
               options={villages}
               placeholder="Pilih Kelurahan"
-              disabled={!form.district_code}
+              disabled={isFormLocked || !form.district_code} // ✅ NEW
               valueKey="village_code"
               labelKey="village"
             />
           </div>
-  
+
           <div className="flex justify-end gap-4 pt-4">
             <button
               type="submit"
@@ -387,9 +515,10 @@ onSuccess: (res) => {
             >
               {mutation.isLoading ? "Menyimpan..." : "Simpan"}
             </button>
+
             <button
               type="button"
-              onClick={() => navigate("/koordinator/kunjungan")}
+              onClick={() => navigate(redirectPath)}
               className="bg-white-100 px-6 py-2 rounded-lg text-gray-600 hover:underline font-semibold"
             >
               Batal
@@ -397,7 +526,7 @@ onSuccess: (res) => {
           </div>
         </form>
       </div>
-  
+
       {/* =========================
           SHOW RESTORE MODAL
       ========================= */}
@@ -408,30 +537,32 @@ onSuccess: (res) => {
               NIK Sudah Pernah Terdaftar
             </h3>
             <p className="text-gray-600 mb-6">
-              NIK ini pernah terdaftar dan saat ini nonaktif.
-              Apakah ingin mengaktifkan kembali?
+              NIK ini pernah terdaftar dan saat ini nonaktif. Apakah ingin
+              mengaktifkan kembali?
             </p>
-  
+
             <div className="flex justify-end gap-3">
               <button
+                type="button"
                 onClick={() => setShowRestoreConfirm(false)}
                 className="px-4 py-2 rounded-lg border"
               >
                 Batal
               </button>
               <button
+                type="button"
                 onClick={handleRestore}
                 disabled={isRestoring}
                 className="px-4 py-2 rounded-lg bg-blue-900 text-white"
               >
-                {isRestoring ? "Mengaktifkan..." : "Ya, Aktifkan"}
+                {isRestoring ? "Memuat..." : "Ya, Aktifkan"}
               </button>
             </div>
           </div>
         </div>
       )}
     </>
-  );  
+  );
 }
 
 /* =========================
@@ -450,7 +581,7 @@ function Field({ label, required = false, error, children }) {
   );
 }
 
-/* =========================  
+/* =========================
    SELECT FIELD (ICONIFY)
 ========================= */
 function SelectField({
@@ -497,4 +628,4 @@ function SelectField({
       </div>
     </Field>
   );
-} 
+}

@@ -17,7 +17,6 @@ class Analisis extends Controller
             '03' => [100003],
         ];
 
-        // 1️⃣ PASLON + SUARA
         $paslon = VoteCount::select(
                 'district',
                 'district_code',
@@ -29,7 +28,6 @@ class Analisis extends Controller
             ->get()
             ->keyBy('district_code');
 
-        // 2️⃣ PARTAI + SUARA (SEMUA)
         $parties = PartyVote::select(
                 'district_code',
                 'party_code',
@@ -39,7 +37,6 @@ class Analisis extends Controller
             ->get()
             ->groupBy('district_code');
 
-        // 3️⃣ BUILD RESPONSE
         $result = [];
 
         foreach ($paslon as $districtCode => $row) {
@@ -58,7 +55,7 @@ class Analisis extends Controller
             }
 
             arsort($partyVotes);
-            $dominantParty = array_key_first($partyVotes); // 🔥 INI PARTY WINNER!
+            $dominantParty = array_key_first($partyVotes); 
 
             $category = isset($partyVotes[$dominantParty]) &&
                 in_array($dominantParty, $coalitions[$winner] ?? [])
@@ -70,7 +67,7 @@ class Analisis extends Controller
                 'district_code' => $districtCode,
                 'winner_paslon' => $winner,
                 'votes_paslon' => $votesPaslon,
-                'party_winner' => $dominantParty, // ✅ TAMBAHKAN INI
+                'party_winner' => $dominantParty, 
                 'party_votes' => $partyVotes,
                 'category' => $category,
             ];

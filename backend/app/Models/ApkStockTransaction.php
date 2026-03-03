@@ -22,7 +22,7 @@ class ApkStockTransaction extends Model
         'note',
         'total_cost',
         'created_by',
-        'coordinator_id',   // ✅ baru
+        'coordinator_id',
         'created_at',
     ];
 
@@ -42,7 +42,6 @@ class ApkStockTransaction extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    // ✅ koordinator yang request (khusus OUT)
     public function coordinator(): BelongsTo
     {
         return $this->belongsTo(CoordinatorApk::class, 'coordinator_id');

@@ -10,9 +10,8 @@ class AuthController extends Controller
 {
     private function setRoleStatus($user, string $status): void
     {
-        $role = $user->role_name; // accessor dari User model (roles.role)
+        $role = $user->role_name;
 
-        // load relasi yg mungkin dipakai biar tidak N+1 / null
         $user->loadMissing([
             'kunjunganKoordinator',
             'apkKoordinator',
@@ -42,13 +41,10 @@ class AuthController extends Controller
                 break;
 
             case 'admin_paslon':
-                // kalau memang admin_paslon juga punya kolom status di tabelnya:
                 if ($user->adminPaslon) {
-                    // kalau admin_paslons ada kolom status:
                     if (isset($user->adminPaslon->status)) {
                         $user->adminPaslon->update(['status' => $status]);
                     } else {
-                        // kalau gak ada kolom status dan cuma mau touch, biarkan
                         $user->adminPaslon->touch();
                     }
                 }
@@ -67,16 +63,10 @@ class AuthController extends Controller
                 break;
 
             default:
-                // role lain: tidak melakukan apa-apa
                 break;
         }
     }
 
-    /**
-     * =======================
-     * LOGIN
-     * =======================
-     */
     public function login(Request $request)
     {
         $request->validate([
@@ -93,13 +83,10 @@ class AuthController extends Controller
 
         $user = Auth::user()->load('role');
 
-        // ✅ status ACTIVE di tabel role masing-masing (bukan users)
         $this->setRoleStatus($user, 'active');
 
-        // TOKEN
         $token = $user->createToken('api-token')->plainTextToken;
 
-        // Build user response
         $userData = [
             'id'      => $user->id,
             'name'    => $user->name,
@@ -108,16 +95,12 @@ class AuthController extends Controller
             'role_id' => $user->role_id,
         ];
 
-        // Jika relawan, tambahkan is_apk dan is_kunjungan untuk redirect logic
         if ($user->role_name === 'relawan') {
-            // Load relawan jika belum
             $user->loadMissing('relawan');
             
-            // Default ke 0 jika relawan record tidak ada
             $userData['is_apk']       = $user->relawan ? (int) $user->relawan->is_apk : 0;
             $userData['is_kunjungan'] = $user->relawan ? (int) $user->relawan->is_kunjungan : 0;
             
-            // Debug log (bisa dihapus nanti)
             \Log::info('[Login] Relawan flags', [
                 'user_id' => $user->id,
                 'has_relawan' => $user->relawan ? true : false,
@@ -133,11 +116,6 @@ class AuthController extends Controller
         ]);
     }
 
-    /**
-     * =======================
-     * LOGOUT
-     * =======================
-     */
     public function logout(Request $request)
     {
         $user = $request->user();
@@ -150,10 +128,8 @@ class AuthController extends Controller
 
         $user->load('role');
 
-        // ✅ status INACTIVE di tabel role masing-masing (bukan users)
         $this->setRoleStatus($user, 'inactive');
 
-        // ✅ HAPUS TOKEN TERAKHIR
         if ($user->currentAccessToken()) {
             $user->currentAccessToken()->delete();
         }
@@ -164,17 +140,10 @@ class AuthController extends Controller
         ]);
     }
 
-    /**
-     * =======================
-     * ME (PROFILE)
-     * =======================
-     * NOTE: kalau status bukan di users, endpoint me sebaiknya ambil dari tabel role juga.
-     */
     public function me(Request $request)
     {
         $user = $request->user()->load('role');
 
-        // ambil status dari tabel role sesuai role
         $status = null;
         $user->loadMissing([
             'kunjunganKoordinator',
@@ -213,17 +182,11 @@ class AuthController extends Controller
                 'name'   => $user->name,
                 'email'  => $user->email,
                 'role'   => $user->role_name,
-                'status' => $status, // ✅ status dari tabel masing-masing
+                'status' => $status,
             ]
         ]);
     }
 
-    /**
-     * =======================
-     * WILAYAH
-     * =======================
-     * kalau wilayah memang khusus koordinator, sesuaikan role check-nya
-     */
     public function wilayah(Request $request)
     {
         $user = $request->user()->load('role');

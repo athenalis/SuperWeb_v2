@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { Icon } from "@iconify/react";
-// import api from "../../lib/axios";
+import api from "../../lib/axios";
 import { validateKTP } from "../../lib/ktpValidator";
 import CameraCapture from "../../components/CameraCapture";
 
@@ -97,6 +97,7 @@ export default function EditKunjungan() {
   const [loading, setLoading] = useState(true);
   const [initialData, setInitialData] = useState(null);
   const [showExitModal, setShowExitModal] = useState(false);
+  const allowedStatuses = ['rejected', 'pending', 'needs_revision'];  
 
   useEffect(() => {
     fetchInitialData();
@@ -107,8 +108,8 @@ export default function EditKunjungan() {
       const res = await api.get(`/kunjungan/${id}`);
       if (res.data.success) {
         const data = res.data.data;
-        if (data.status_verifikasi !== 'rejected' && data.status_verifikasi !== 'pending') {
-          toast.error('Hanya kunjungan Pending/Ditolak yang bisa diedit.');
+        if (!allowedStatuses.includes(data.status_verifikasi)) {
+          toast.error('Hanya kunjungan Pending/Ditolak/Revisi yang bisa diedit.');
           navigate(`/kunjungan/${id}`, { replace: true });
           return;
         }

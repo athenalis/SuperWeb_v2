@@ -100,7 +100,6 @@ class ApkBentukController extends Controller
     {
         $bentuk = ApkBentuk::findOrFail($id);
 
-        // lebih aman: nonaktifkan
         $bentuk->is_active = false;
         $bentuk->save();
 

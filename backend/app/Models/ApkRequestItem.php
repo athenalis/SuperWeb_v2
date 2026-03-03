@@ -19,7 +19,7 @@ class ApkRequestItem extends Model
 
     public function item()
     {
-        return $this->belongsTo(ApkItem::class, 'item_id'); // master item kamu
+        return $this->belongsTo(ApkItem::class, 'item_id');
     }
 
     public function unit()

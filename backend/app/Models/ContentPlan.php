@@ -62,10 +62,8 @@ class ContentPlan extends Model
 
     public function getTotalBudgetActiveAttribute()
     {
-        // budget_content yang aktif (deleted_at null)
         $budgetContent = (float) ($this->budget?->budget_content ?? 0);
 
-        // ads yang aktif (deleted_at null)
         $adsBudget = (float) ContentPlatformAd::query()
             ->where('content_plan_id', $this->id)
             ->sum('budget_ads');

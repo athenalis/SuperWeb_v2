@@ -15,7 +15,7 @@ class ApkItemController extends Controller
     private function roleName(User $user): ?string
     {
         $user->loadMissing('role');
-        return $user->role?->role; // admin_apk / admin_paslon / apk_koordinator / apk_kurir
+        return $user->role?->role; 
     }
 
     private function requireAdminApk(User $user)
@@ -56,7 +56,6 @@ class ApkItemController extends Controller
 
     private function requireAdminPaslon(User $user)
     {
-        // user kamu sudah punya relasi adminPaslon()
         $row = $user->adminPaslon;
         if (!$row) {
             abort(response()->json([
@@ -67,9 +66,6 @@ class ApkItemController extends Controller
         return $row;
     }
 
-    /**
-     * ✅ Ambil paslon_id dari user login untuk semua role APK
-     */
     private function currentPaslonId(): int
     {
         /** @var User|null $user */
@@ -221,6 +217,23 @@ class ApkItemController extends Controller
                     'updated_at' => now(),
                 ]
             );
+            if ($stock > 0 || $budget > 0) {
+                if ($stock <= 0 && $budget > 0) {
+                    $stock = 0.001;
+                }
+
+                DB::table('apk_stock_transactions')->insert([
+                    'paslon_id' => (int) $paslonId,
+                    'item_id' => (int) $item->id,
+                    'type' => 'IN',
+                    'qty' => (float) $stock,
+                    'note' => 'Stok awal item',
+                    'total_cost' => $budget > 0 ? (float) $budget : null,
+                    'created_by' => (int) $user->id,
+                    'coordinator_id' => null,
+                    'created_at' => now(),
+                ]);
+            }
 
             ActivityLogger::log([
                 'action' => 'CREATE',
@@ -307,32 +320,57 @@ class ApkItemController extends Controller
 
     public function destroy(ApkItem $apkItem)
     {
-        /** @var User|null $user */
-        $user = Auth::user();
-        if (!$user) {
-            return response()->json(['status' => false, 'message' => 'Unauthorized'], 401);
+        try {
+            /** @var User|null $user */
+            $user = Auth::user();
+            if (!$user) {
+                return response()->json(['status' => false, 'message' => 'Unauthorized'], 401);
+            }
+
+            $paslonId = $this->currentPaslonId();
+
+            if ((int) $apkItem->paslon_id !== (int) $paslonId) {
+                return response()->json(['status' => false, 'message' => 'Forbidden'], 403);
+            }
+
+            DB::transaction(function () use ($apkItem, $paslonId) {
+                $name = $apkItem->name;
+                $id = $apkItem->id;
+
+                DB::table('apk_item_stocks')->where('item_id', $id)->delete();
+
+                DB::table('apk_stock_transactions')->where('item_id', $id)->delete();
+
+                $apkItem->delete(); 
+
+                ActivityLogger::log([
+                    'action' => 'DELETE',
+                    'target_type' => 'apk_item',
+                    'target_name' => $name,
+                    'meta' => [
+                        'hard_delete' => true,
+                        'item_id' => $id,
+                    ],
+                    'paslon_id' => (int) $paslonId,
+                ]);
+            });
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Barang berhasil dihapus permanen',
+            ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Gagal menghapus: Item ini sedang digunakan dalam transaksi lain.',
+                'error' => $e->getMessage()
+            ], 400); 
+        } catch (\Throwable $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Terjadi kesalahan sistem: ' . $e->getMessage(),
+            ], 500);
         }
-
-        $paslonId = $this->currentPaslonId();
-
-        if ((int) $apkItem->paslon_id !== (int) $paslonId) {
-            return response()->json(['status' => false, 'message' => 'Forbidden'], 403);
-        }
-
-        $apkItem->is_active = false;
-        $apkItem->save();
-
-        ActivityLogger::log([
-            'action' => 'DELETE',
-            'target_type' => 'apk_item',
-            'target_name' => $apkItem->name,
-            'meta' => ['hard_delete' => false, 'item_id' => $apkItem->id],
-            'paslon_id' => (int) $paslonId,
-        ]);
-
-        return response()->json([
-            'status' => true,
-            'message' => 'Barang berhasil dinonaktifkan',
-        ]);
     }
+
 }

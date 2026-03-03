@@ -7,8 +7,6 @@ import { toast } from "react-hot-toast";
 import { offlineDb } from "../../lib/offlineDb";
 import { syncService } from "../../lib/syncService";
 
-// === INLINE CONFIRMATION MODAL COMPONENTS ===
-// Menggunakan Portal dan Style persis seperti Hapus Relawan
 const ConfirmationModal = ({
     isOpen,
     onClose,

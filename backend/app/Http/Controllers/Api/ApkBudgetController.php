@@ -14,7 +14,7 @@ class ApkBudgetController extends Controller
     private function roleName($user): ?string
     {
         $user->loadMissing('role');
-        return $user->role?->role; // admin_apk / admin_paslon / apk_koordinator / apk_kurir
+        return $user->role?->role; 
     }
 
     private function requireKoordinator($user)
@@ -69,9 +69,6 @@ class ApkBudgetController extends Controller
         return $adminPaslon;
     }
 
-    /**
-     * Paslon ID resolver dari user login
-     */
     private function currentPaslonIdFromLogin(): int
     {
         $user = Auth::user();
@@ -127,10 +124,6 @@ class ApkBudgetController extends Controller
         ], 403));
     }
 
-    /**
-     * GET /apk/budget
-     * Return total_budget + budget_terpakai + sisa_budget
-     */
     public function index(Request $request)
     {
         $paslonId = $this->currentPaslonIdFromLogin();
@@ -156,11 +149,6 @@ class ApkBudgetController extends Controller
         ]);
     }
 
-    /**
-     * POST /apk/budget
-     * Body: { amount: 8001000000 }
-     * Save total_budget untuk paslon user login (UPSERT)
-     */
     public function store(Request $request)
     {
         $paslonId = $this->currentPaslonIdFromLogin();

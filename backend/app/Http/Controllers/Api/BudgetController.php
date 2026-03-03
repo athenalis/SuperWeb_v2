@@ -41,7 +41,7 @@ class BudgetController extends Controller
 
         $used = ContentPlan::query()
             ->where('paslon_id', $paslonId)
-            ->with(['budget']) // biar gak N+1
+            ->with(['budget'])
             ->get()
             ->sum(fn($cp) => (float) $cp->total_budget_active);
 

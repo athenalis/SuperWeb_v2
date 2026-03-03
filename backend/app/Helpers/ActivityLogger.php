@@ -12,22 +12,18 @@ class ActivityLogger
     {
         if (!$user) return null;
 
-        // kalau user punya attribute role slug langsung
         if (isset($user->getAttributes()['role']) && is_string($user->getAttributes()['role'])) {
             return $user->getAttributes()['role'];
         }
 
-        // kalau ada relasi role
         if (is_object($user->role) && isset($user->role->role)) {
             return $user->role->role;
         }
 
-        // kalau role_name ada
         if (isset($user->role_name) && is_string($user->role_name)) {
             return $user->role_name;
         }
 
-        // fallback: ambil slug dari table roles berdasarkan role_id
         if (isset($user->role_id)) {
             $slug = DB::table('roles')->where('id', (int)$user->role_id)->value('role');
             if (is_string($slug) && $slug !== '') return $slug;
@@ -48,11 +44,11 @@ class ActivityLogger
 
         History::create([
             'user_id'     => $user?->id,
-            'role'        => self::normalizeRole($user), // <-- slug
+            'role'        => self::normalizeRole($user),
             'action'      => strtoupper($data['action'] ?? ''),
             'target_type' => $data['target_type'] ?? null,
             'target_name' => $data['target_name'] ?? null,
-            'field'       => $data['field'] ?? $data['target_type'] ?? '-', // <-- field selalu keisi
+            'field'       => $data['field'] ?? $data['target_type'] ?? '-',
             'old_value'   => $data['old_value'] ?? null,
             'new_value'   => $data['new_value'] ?? null,
             'meta'        => $data['meta'] ?? null,

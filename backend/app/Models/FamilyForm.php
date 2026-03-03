@@ -14,9 +14,6 @@ class FamilyForm extends Model
         'alamat_keluarga',
     ];
 
-    /**
-     * Relasi ke KunjunganForm
-     */
     public function kunjungan()
     {
         return $this->belongsTo(VisitForm::class);

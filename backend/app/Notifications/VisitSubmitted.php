@@ -14,9 +14,6 @@ class VisitSubmitted extends Notification
     protected $visit;
     protected $relawan;
 
-    /**
-     * Create a new notification instance.
-     */
     public function __construct($visit, $relawan)
     {
         $this->visit = $visit;
@@ -42,7 +39,7 @@ class VisitSubmitted extends Notification
     {
         return [
             'visit_id' => $this->visit->id,
-            'kunjungan_id' => $this->visit->id, // For frontend compatibility
+            'kunjungan_id' => $this->visit->id,
             'relawan_id' => $this->relawan->id,
             'relawan_name' => $this->relawan->nama,
             'visit_name' => $this->visit->nama,

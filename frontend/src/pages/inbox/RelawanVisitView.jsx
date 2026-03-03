@@ -37,10 +37,11 @@ export default function RelawanVisitView({ notification, onComplete }) {
     };
 
     const handleEdit = (e) => {
-        e.stopPropagation();
-        const editUrl = `/kunjungan/${visit.id}/edit`;
-        console.log("Navigating to edit page (force):", editUrl);
-        window.location.href = editUrl;
+    e.preventDefault();
+    e.stopPropagation();
+    const editUrl = `/kunjungan/${visit.id}/edit`;
+    console.log("Navigating to edit page:", editUrl);
+    window.location.href = editUrl;
     };
 
     if (loading) {
@@ -182,6 +183,7 @@ export default function RelawanVisitView({ notification, onComplete }) {
                                 {/* Edit Action for Rejected */}
                                 <div className="mt-4 px-4 pb-2">
                                     <button
+                                        type="button"
                                         onClick={handleEdit}
                                         className="w-full bg-red-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-red-700 transition flex items-center justify-center gap-2 shadow-sm"
                                     >

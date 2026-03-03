@@ -18,8 +18,6 @@ class ApkInstallationController extends Controller
         $relawan = Relawan::where('user_id', $user->id)->first();
         if ($relawan) {
             if ((int) $relawan->is_apk !== 1) {
-                // abort(response()->json(['message' => 'Relawan tidak punya tugas APK'], 403));
-                // Optional: allow if needed, or strictly follow logic
             }
             return [
                 'paslon_id' => $relawan->paslon_id,
@@ -46,7 +44,6 @@ class ApkInstallationController extends Controller
     {
         $user = $request->user();
 
-        // Hanya admin_apk boleh akses
         $isAdminApk = method_exists($user, 'hasRole') && $user->hasRole('apk_koordinator');
         if (!$isAdminApk) {
             abort(response()->json(['message' => 'Akses ditolak: hanya apk_koordinator'], 403));
@@ -100,10 +97,8 @@ class ApkInstallationController extends Controller
             $q->whereDate('taken_at', '<=', $validated['date_to']);
         }
 
-        // urutkan terbaru
         $rows = $q->orderByDesc('taken_at')->orderByDesc('id')->paginate($perPage);
 
-        // Siapkan photo_url agar FE gampang panggil foto
         $rows->getCollection()->transform(function ($row) use ($request) {
             return [
                 'id' => $row->id,
@@ -122,7 +117,6 @@ class ApkInstallationController extends Controller
                 'created_at' => $row->created_at,
                 'updated_at' => $row->updated_at,
 
-                // sesuaikan path ini dengan route kamu
                 'photo_url' => url("/api/apk-installations/{$row->id}/photo"),
             ];
         });

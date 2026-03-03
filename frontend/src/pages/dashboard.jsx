@@ -41,7 +41,7 @@ const quickMenus = [
     title: "Data Relawan",
     desc: "Kelola data relawan",
     icon: "solar:users-group-rounded-bold",
-    path: "/relawan",
+    path: "/relawan/kunjungan",
     gradient: "from-green-500 to-green-600",
   },
   {
@@ -338,7 +338,7 @@ export default function Dashboard() {
               name: "Tidak Setuju",
               type: "bar",
               stack: "total",
-              itemStyle: { 
+              itemStyle: {
                 color: "#1754da", // Biru gelap
               },
               label: {
@@ -364,7 +364,7 @@ export default function Dashboard() {
               name: "Setuju",
               type: "bar",
               stack: "total",
-              itemStyle: { 
+              itemStyle: {
                 color: "#3d7fea", // Biru medium
               },
               label: {
@@ -390,7 +390,7 @@ export default function Dashboard() {
               name: "Sangat Setuju",
               type: "bar",
               stack: "total",
-              itemStyle: { 
+              itemStyle: {
                 color: "#7cacf8", // Biru terang
                 borderRadius: [0, 6, 6, 0],
               },
@@ -983,7 +983,22 @@ export default function Dashboard() {
 
       {/* MAP */}
       <div className="bg-white rounded-xl md:rounded-2xl shadow-sm p-4 sm:p-5 md:p-6 border border-slate-100">
-        <h2 className="font-bold text-base sm:text-lg mb-3 sm:mb-4">Peta Kunjungan</h2>
+        <div className="flex items-start justify-between gap-4 mb-3 sm:mb-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+              <Icon icon="solar:map-point-bold" className="text-blue-600" width={20} />
+            </div>
+            <div>
+              <h2 className="font-bold text-base sm:text-lg text-slate-800 leading-tight">
+                Peta Kunjungan
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                Sebaran lokasi kunjungan relawan
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="h-[350px] sm:h-[420px] md:h-[500px] lg:h-[550px]">
           <VisitMap visits={visits} />
         </div>

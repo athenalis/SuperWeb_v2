@@ -22,7 +22,7 @@ class KoordinatorKunjunganExport implements
     WithEvents,
     WithColumnFormatting
 {
-    protected string $mode; // admin_paslon (saat ini hanya ini)
+    protected string $mode; // admin_paslon
     protected int $paslonId;
     protected ?string $paslonSuffix;
 
@@ -72,11 +72,9 @@ class KoordinatorKunjunganExport implements
                 }
             }
 
-            // ✅ Paksa NIK jadi string digit (biar tidak kebaca angka)
             $nik = (string) ($row->nik ?? '');
             $nik = preg_replace('/\D+/', '', $nik) ?: '-';
 
-            // ✅ No HP juga string digit (optional, tapi aman)
             $noHp = (string) ($row->no_hp ?? '');
             $noHp = preg_replace('/\D+/', '', $noHp) ?: '-';
 
@@ -100,8 +98,8 @@ class KoordinatorKunjunganExport implements
     public function columnFormats(): array
     {
         return [
-            'B' => NumberFormat::FORMAT_TEXT, // NIK
-            'E' => NumberFormat::FORMAT_TEXT, // No HP
+            'B' => NumberFormat::FORMAT_TEXT,
+            'E' => NumberFormat::FORMAT_TEXT,
         ];
     }
 
@@ -109,19 +107,15 @@ class KoordinatorKunjunganExport implements
     {
         return [
             AfterSheet::class => function (AfterSheet $event) {
-                // styling lama tetap
                 $event->sheet->getStyle('A1:G1')->getFont()->setBold(true);
                 $event->sheet->getStyle('A:G')->getAlignment()->setWrapText(true);
 
-                // ✅ Mekanisme relawan: paksa kolom NIK & No HP benar-benar text (anti E+15)
                 $sheet = $event->sheet->getDelegate();
                 $highestRow = $sheet->getHighestRow();
 
-                // Set format kolom text (double safety)
                 $sheet->getStyle("B2:B{$highestRow}")->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
                 $sheet->getStyle("E2:E{$highestRow}")->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
 
-                // Paksa value explicit string (yang biasanya dipakai di relawan export)
                 for ($row = 2; $row <= $highestRow; $row++) {
                     $nikVal = (string) $sheet->getCell("B{$row}")->getValue();
                     $hpVal  = (string) $sheet->getCell("E{$row}")->getValue();

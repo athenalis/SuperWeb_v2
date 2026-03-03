@@ -42,7 +42,6 @@ use App\Http\Controllers\Api\ContentPlatformController;
 use App\Http\Controllers\Api\TrackingController;
 use App\Http\Controllers\Api\ApkInstallationController;
 
-// AUTH
 Route::post('/login', [AuthController::class, 'login'])->name('login');
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -50,20 +49,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
 });
 
-// AUTHENTICATED - PUBLIC RESOURCES
-
 Route::middleware('auth:sanctum')->group(function () {
 
-    // activity log
     Route::get('/activity-logs', [HistoryController::class, 'index']);
 
-    // Ormas
     Route::get('/ormas', [OrmasController::class, 'index']);
 
-    // Wilayah user
     Route::get('/me/wilayah', [AuthController::class, 'wilayah']);
 
-    // Wilayah master
     Route::prefix('wilayah')->group(function () {
         Route::get('/', [WilayahController::class, 'index']);
         Route::get('cities/{province}', [WilayahController::class, 'cities']);
@@ -72,11 +65,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('pekerjaan', [WilayahController::class, 'pekerjaan']);
     });
 
-    // Template download
     Route::get('/koordinator/template', fn() => Excel::download(new KoordinatorTemplate, 'template_koordinator.xlsx'));
     Route::get('/relawan/template', fn() => Excel::download(new RelawanTemplate, 'template_relawan.xlsx'));
 
-    // Notifications
     Route::prefix('notifications')->group(function () {
         Route::get('/', [NotificationController::class, 'index']);
         Route::post('/read-all', [NotificationController::class, 'markAllAsRead']);
@@ -85,24 +76,21 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 });
 
-//ROLE: superadmin & admin_paslon
 Route::middleware(['auth:sanctum', 'role:admin_paslon|superadmin'])->group(function () {
 
-    // Suara
     Route::prefix('suara')->group(function () {
         Route::get('/paslon', [SuaraController::class, 'paslonCard']);
         Route::get('/diagram-paslon', [SuaraController::class, 'diagramPaslon']);
         Route::get('/diagram-partai', [SuaraController::class, 'diagramPartai']);
     });
 
-    // Peta
     Route::prefix('peta')->group(function () {
 
         Route::prefix('paslon')->group(function () {
             Route::get('/kota', [PetaSuaraController::class, 'perKota']);
             Route::get('/kecamatan', [PetaSuaraController::class, 'perKecamatan']);
             Route::get('/kelurahan', [PetaSuaraController::class, 'perKelurahan']);
-            Route::get('/', [PetaSuaraController::class, 'perKelurahan']); // backward compatibility
+            Route::get('/', [PetaSuaraController::class, 'perKelurahan']);
         });
 
         Route::prefix('dpt')->group(function () {
@@ -120,7 +108,6 @@ Route::middleware(['auth:sanctum', 'role:admin_paslon|superadmin'])->group(funct
     });
 });
 
-// ROLE: superadmin
 Route::middleware(['auth:sanctum', 'role:superadmin'])->group(function () {
 
     Route::prefix('paslon')->group(function () {
@@ -129,7 +116,6 @@ Route::middleware(['auth:sanctum', 'role:superadmin'])->group(function () {
         Route::get('/{id}', [PaslonController::class, 'show']);
     });
 
-    // Admin Paslon
     Route::prefix('admin-paslon')->group(function () {
         Route::post('/', [AdminPaslonController::class, 'store']);
         Route::get('/', [AdminPaslonController::class, 'index']);
@@ -148,10 +134,8 @@ Route::middleware(['auth:sanctum', 'role:admin_apk|admin_paslon|apk_koordinator|
 });
 
 
-// ROLE: admin_paslon
 Route::middleware(['auth:sanctum', 'role:admin_paslon'])->group(function () {
 
-    // Admin APK
     Route::prefix('admin-apk')->group(function () {
         Route::post('/', [AdminApkController::class, 'store']);
         Route::get('/', [AdminApkController::class, 'index']);
@@ -159,7 +143,6 @@ Route::middleware(['auth:sanctum', 'role:admin_paslon'])->group(function () {
         Route::put('/{id}', [AdminApkController::class, 'update']);
     });
 
-    // Koordinator
     Route::prefix('koordinator')->name('koordinator.')->group(function () {
         Route::post('/export', [CoordinatorController::class, 'exportAllKunjungan']);
         Route::get('/', [CoordinatorController::class, 'index']);
@@ -175,7 +158,6 @@ Route::middleware(['auth:sanctum', 'role:admin_paslon'])->group(function () {
         Route::post('/apk/export', [CoordinatorApkController::class, 'export']);
     });
 
-    // Social media (content)
     Route::prefix('content-plans')->group(function () {
         Route::get('/', [ContentPlanController::class, 'index']);
         Route::get('/summary', [ContentPlanController::class, 'contentSummary']);
@@ -188,7 +170,6 @@ Route::middleware(['auth:sanctum', 'role:admin_paslon'])->group(function () {
         Route::put('/{id}/analytics/record/{engagementId}', [EngagementController::class, 'update']);
     });
 
-    // Dashboard
     Route::prefix('dashboard')->group(function () {
         Route::get('/', [DashboardController::class, 'index']);
         Route::get('/progress-bar', [DashboardController::class, 'progressBar']);
@@ -196,7 +177,6 @@ Route::middleware(['auth:sanctum', 'role:admin_paslon'])->group(function () {
         Route::get('/visit-summary', [DashboardController::class, 'visitSummary']);
     });
 
-    // Influencers
     Route::prefix('influencers')->group(function () {
         Route::get('/', [InfluencerController::class, 'index']);
         Route::post('/', [InfluencerController::class, 'store']);
@@ -204,32 +184,25 @@ Route::middleware(['auth:sanctum', 'role:admin_paslon'])->group(function () {
         Route::get('/all', [InfluencerController::class, 'all']);
     });
 
-    // Analisis
     Route::prefix('persebaran')->group(function () {
         Route::get('/straight-ticket/district', [Analisis::class, 'straightTicketByDistrict']);
     });
 
-    // Content statuses
     Route::get('/content-statuses', fn() => ContentStatus::select('id', 'label')->get());
 
-    // Budget
     Route::get('/budget', [BudgetController::class, 'index']);
 
-    // Platform content
     Route::get('/platforms', [ContentPlatformController::class, 'index']);
 
-    // Content type
     Route::get('/content-types', [ContentTypeController::class, 'index']);
 });
 
-// ROLE: admin_paslon | admin_apk | apk_koordinator (Kurir APK read)
 Route::middleware(['auth:sanctum', 'role:admin_paslon|admin_apk|apk_koordinator'])->group(function () {
     Route::prefix('apk')->group(function () {
         Route::get('installations/{id}/photo', [ApkInstallationController::class, 'photo']);
     });
 });
 
-// ROLE: admin_apk | admin_paslon (Koordinator APK)
 Route::middleware(['auth:sanctum', 'role:admin_apk|admin_paslon'])->group(function () {
     Route::prefix('koordinator-apk')->group(function () {
         Route::post('/', [CoordinatorApkController::class, 'store']);
@@ -244,11 +217,9 @@ Route::middleware(['auth:sanctum', 'role:admin_apk|admin_paslon'])->group(functi
     });
 });
 
-// ROLE : admin_apk
 Route::middleware(['auth:sanctum', 'role:admin_apk'])->group(function () {
     Route::prefix('apk')->group(function () {
 
-        // APK Items
         Route::prefix('items')->group(function () {
             Route::get('/', [ApkItemController::class, 'index']);
             Route::post('/', [ApkItemController::class, 'store']);
@@ -256,13 +227,11 @@ Route::middleware(['auth:sanctum', 'role:admin_apk'])->group(function () {
             Route::delete('/{apkItem}', [ApkItemController::class, 'destroy']);
         });
 
-        // APK Stock
         Route::prefix('stock')->group(function () {
             Route::post('/in', [ApkStockController::class, 'stockIn']);
             Route::post('/out', [ApkStockController::class, 'stockOut']);
             Route::post('/adjust', [ApkStockController::class, 'stockAdjust']);
         });
-
         // APK Bentuk
         Route::prefix('bentuk')->group(function () {
             Route::get('/', [ApkBentukController::class, 'index']);

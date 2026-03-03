@@ -9,7 +9,7 @@ class Pekerjaan extends Model
     protected $table = 'pekerjaans';
 
     protected $primaryKey = 'id';
-    public $incrementing = false; // penting
+    public $incrementing = false;
     protected $keyType = 'int';
 
     protected $fillable = [

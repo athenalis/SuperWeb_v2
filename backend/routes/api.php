@@ -53,11 +53,6 @@ use App\Http\Controllers\Api\CoordinatorApkController;
 use App\Http\Controllers\Api\ApkInstallationController;
 use App\Http\Controllers\Api\ContentPlatformController;
 
-/*
-|--------------------------------------------------------------------------
-| AUTH
-|--------------------------------------------------------------------------
-*/
 
 Route::post('/login', [AuthController::class, 'login'])->name('login');
 
@@ -66,17 +61,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
 });
 
-/*
-|--------------------------------------------------------------------------
-| AUTHENTICATED - PUBLIC RESOURCES
-|--------------------------------------------------------------------------
-*/
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/activity-logs', [HistoryController::class, 'index']);
     Route::get('/ormas', [OrmasController::class, 'index']);
     Route::get('/me/wilayah', [AuthController::class, 'wilayah']);
     Route::get('/units', [UnitItemController::class, 'index']);
-    Route::get('/apk/bentuks', [ApkBentukController::class, 'index']); // untuk dropdown kategori & bentuk
+    Route::get('/apk/bentuks', [ApkBentukController::class, 'index']);
 
     Route::prefix('wilayah')->group(function () {
         Route::get('/', [WilayahController::class, 'index']);
@@ -114,11 +104,6 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 });
 
-/*
-|--------------------------------------------------------------------------
-| ROLE: superadmin & admin_paslon
-|--------------------------------------------------------------------------
-*/
 Route::middleware(['auth:sanctum', 'role:admin_paslon|superadmin'])->group(function () {
     Route::prefix('suara')->group(function () {
         Route::get('/paslon', [SuaraController::class, 'paslonCard']);
@@ -149,11 +134,6 @@ Route::middleware(['auth:sanctum', 'role:admin_paslon|superadmin'])->group(funct
     });
 });
 
-/*
-|--------------------------------------------------------------------------
-| ROLE: superadmin
-|--------------------------------------------------------------------------
-*/
 Route::middleware(['auth:sanctum', 'role:superadmin'])->group(function () {
     Route::prefix('paslon')->group(function () {
         Route::post('/', [PaslonController::class, 'store']);
@@ -172,45 +152,38 @@ Route::middleware(['auth:sanctum', 'role:superadmin'])->group(function () {
     Route::get('/parties', fn() => Party::select('party_code', 'party')->get());
 });
 
-/*
-|--------------------------------------------------------------------------
-| APK REQUESTS - read (admin_paslon/admin_apk/apk_koordinator/apk_kurir)
-|--------------------------------------------------------------------------
-*/
 Route::middleware(['auth:sanctum', 'role:admin_apk|admin_paslon|apk_koordinator|apk_kurir'])->group(function () {
-    Route::prefix('apk-requests')->group(function () {
-        Route::get('/', [ApkRequestController::class, 'index']);
-        Route::get('/{id}', [ApkRequestController::class, 'show']);
+    
+        Route::prefix('apk-requests')->group(function () {
+            Route::get('/', [ApkRequestController::class, 'index']);
+            Route::get('/{id}', [ApkRequestController::class, 'show']);
+        });
+
+        Route::prefix('apk')->group(function () {
+
+            Route::get('items', [ApkItemController::class, 'index']);
+            Route::get('items/{id}', [ApkItemController::class, 'show']);
+
+            Route::get('bentuks', [ApkBentukController::class, 'index']);
+
+            Route::get('budget', [ApkBudgetController::class, 'index']);
+
+            Route::prefix('stock')->group(function () {
+                Route::get('history', [ApkStockController::class, 'history']);
+                Route::get('history/{id}', [ApkStockController::class, 'historyItem']);
+            });
+        });
     });
 
-    Route::get('/apk/items', [ApkItemController::class, 'index']);    
-    Route::get('/apk/items/{id}', [ApkItemController::class, 'show']);     
-    Route::get('/apk/bentuks', [ApkBentukController::class, 'index']);
-    Route::get('/apk/budget', [ApkBudgetController::class, 'index']);
-    Route::get('apk/stock/history', [ApkStockController::class, 'history']);
-    Route::get('apk/stock/history/{id}', [ApkStockController::class, 'historyItem']);
-});
-
-/*
-|--------------------------------------------------------------------------
-| APK REQUESTS - Admin APK actions (approve/reject)
-|--------------------------------------------------------------------------
-*/
 Route::middleware(['auth:sanctum', 'role:admin_apk'])->group(function () {
     Route::prefix('apk-requests')->group(function () {
         Route::patch('/{id}/approve', [ApkRequestController::class, 'approve']);
         Route::patch('/{id}/reject', [ApkRequestController::class, 'reject']);
     });
 
-    // Fetch couriers for assignment
     Route::get('/apk-kurirs', [CourierApkController::class, 'index']);
 });
 
-/*
-|--------------------------------------------------------------------------
-| APK REQUESTS - Kurir APK actions (pickup/arrive)
-|--------------------------------------------------------------------------
-*/
 Route::middleware(['auth:sanctum', 'role:apk_kurir'])->group(function () {
     Route::prefix('apk-requests')->group(function () {
         Route::post('/{id}/pickup', [ApkRequestController::class, 'pickup']);
@@ -218,17 +191,13 @@ Route::middleware(['auth:sanctum', 'role:apk_kurir'])->group(function () {
     });
 });
 
-/*
-|--------------------------------------------------------------------------
-| ROLE: admin_paslon
-|--------------------------------------------------------------------------
-*/
 Route::middleware(['auth:sanctum', 'role:admin_paslon'])->group(function () {
     Route::prefix('admin-apk')->group(function () {
         Route::post('/', [AdminApkController::class, 'store']);
         Route::get('/', [AdminApkController::class, 'index']);
         Route::get('/{id}', [AdminApkController::class, 'show']);
         Route::put('/{id}', [AdminApkController::class, 'update']);
+        Route::delete('/{id}', [AdminApkController::class, 'destroy']);
     });
 
     Route::prefix('koordinator')->name('koordinator')->group(function () {
@@ -279,11 +248,6 @@ Route::middleware(['auth:sanctum', 'role:admin_paslon'])->group(function () {
     Route::get('/content-types', [ContentTypeController::class, 'index']);
 });
 
-/*
-|--------------------------------------------------------------------------
-| ROLE: admin_paslon | admin_apk | apk_koordinator (Kurir APK read)
-|--------------------------------------------------------------------------
-*/
 Route::middleware(['auth:sanctum', 'role:apk_koordinator'])->group(function () {
     Route::prefix('apk-installations')->group(function () {
         Route::get('/{id}/photo', [ApkInstallationController::class, 'photo']);
@@ -291,25 +255,13 @@ Route::middleware(['auth:sanctum', 'role:apk_koordinator'])->group(function () {
     });
 });
 
-// =====================================================
-// KOORDINATOR APK
-// aturan: admin_apk boleh CRUD, admin_paslon cuma read
-// =====================================================
-
-// READ (admin_apk + admin_paslon)
 Route::middleware(['auth:sanctum', 'role:admin_apk|admin_paslon'])->prefix('koordinator-apk')->group(function () {
     Route::get('/', [CoordinatorApkController::class, 'index']);
     Route::get('/{id}', [CoordinatorApkController::class, 'show']);
 });
 
-/*
-|--------------------------------------------------------------------------
-| ROLE: admin_apk
-|--------------------------------------------------------------------------
-*/
 Route::middleware(['auth:sanctum', 'role:admin_apk'])->group(function () {
 
-    // KOORDINATOR APK (WRITE)
     Route::prefix('koordinator-apk')->group(function () {
         Route::post('/', [CoordinatorApkController::class, 'store']);
         Route::put('/{id}', [CoordinatorApkController::class, 'update']);
@@ -318,12 +270,10 @@ Route::middleware(['auth:sanctum', 'role:admin_apk'])->group(function () {
         Route::post('/import', [CoordinatorApkController::class, 'import']);
         Route::post('/restore-by-nik', [CoordinatorApkController::class, 'restoreByNik']);
 
-        // kalau ini memang admin_apk aja:
         Route::post('/check-nik', [CoordinatorApkController::class, 'checkNik']);
-        Route::post('/apk/export', [CoordinatorApkController::class, 'export']);
+        Route::post('/export', [CoordinatorApkController::class, 'export']);
     });
 
-    // APK MANAGEMENT
     Route::prefix('apk')->group(function () {
 
         Route::prefix('items')->group(function () {
@@ -346,7 +296,6 @@ Route::middleware(['auth:sanctum', 'role:admin_apk'])->group(function () {
         });
     });
 
-    // APK KURIR
     Route::prefix('apk-kurir')->group(function () {
         Route::get('/', [CourierApkController::class, 'index']);
         Route::get('/active', [CourierApkController::class, 'active']);
@@ -358,11 +307,6 @@ Route::middleware(['auth:sanctum', 'role:admin_apk'])->group(function () {
     });
 });
 
-/*
-|--------------------------------------------------------------------------
-| RELAWAN MODULE ✅ DIRAPIKAN (NO DUPLICATE GROUP)
-|--------------------------------------------------------------------------
-*/
 Route::middleware('auth:sanctum')->prefix('relawan')->group(function () {
     Route::middleware('role:admin_paslon|admin_apk|kunjungan_koordinator|apk_koordinator')->group(function () {
         Route::get('/apk', [RelawanController::class, 'indexApk']);
@@ -374,7 +318,6 @@ Route::middleware('auth:sanctum')->prefix('relawan')->group(function () {
         Route::post('/export-apk', [RelawanController::class, 'exportApk']);
     });
 
-    // ✅ Mutasi data relawan (khusus koor)
     Route::middleware('role:kunjungan_koordinator|apk_koordinator')->group(function () {
         Route::post('/', [RelawanController::class, 'store']);
         Route::put('/{id}', [RelawanController::class, 'update']);
@@ -406,12 +349,6 @@ Route::middleware(['auth:sanctum', 'role:apk_koordinator'])->group(function () {
     });
 });
 
-
-/*
-|--------------------------------------------------------------------------
-| ROLE: relawan | apk_kurir (tracking + installations)
-|--------------------------------------------------------------------------
-*/
 Route::middleware(['auth:sanctum', 'role:relawan|apk_kurir'])->prefix('apk')->group(function () {
     Route::prefix('tracking')->group(function () {
         Route::post('/start', [TrackingController::class, 'start']);
@@ -429,7 +366,6 @@ Route::middleware(['auth:sanctum', 'role:relawan|kunjungan_koordinator'])->prefi
     Route::get('/{id}', [KunjunganController::class, 'show']);
 });
 
-// kunjungan - relawan only
 Route::middleware(['auth:sanctum', 'role:relawan'])->prefix('kunjungan')->group(function () {
     Route::post('/', [KunjunganController::class, 'store']);
     Route::put('/{id}', [KunjunganController::class, 'update']);
@@ -443,7 +379,6 @@ Route::middleware(['auth:sanctum', 'role:relawan'])->prefix('kunjungan')->group(
     Route::post('/check-nik', [KunjunganController::class, 'checkNik']);
 });
 
-// kunjungan - koor only
 Route::middleware(['auth:sanctum', 'role:kunjungan_koordinator'])->prefix('kunjungan')->group(function () {
     Route::get('/batch/next', [KunjunganController::class, 'getNextBatch']);
     Route::post('/{id}/verifikasi', [KunjunganController::class, 'verifikasi']);

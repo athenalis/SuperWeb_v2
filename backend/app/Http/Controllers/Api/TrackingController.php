@@ -13,7 +13,6 @@ class TrackingController extends Controller
 {
     private function resolveApkActor($user): array
     {
-        // 1) coba relawan
         $relawan = Relawan::where('user_id', $user->id)->first();
         if ($relawan) {
             if ((int) $relawan->is_apk !== 1) {
@@ -28,7 +27,6 @@ class TrackingController extends Controller
             ];
         }
 
-        // 2) coba kurir
         $kurir = CourierApk::where('user_id', $user->id)->first();
         if ($kurir) {
             return [
@@ -83,7 +81,7 @@ class TrackingController extends Controller
     public function ping(Request $request)
     {
         $user = $request->user();
-        $this->resolveApkActor($user); // cukup validasi akses
+        $this->resolveApkActor($user);
 
         $data = $request->validate([
             'session_id' => 'required|integer',

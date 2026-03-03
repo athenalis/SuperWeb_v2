@@ -31,14 +31,6 @@ class KurirApkExport extends DefaultValueBinder implements
 
     public function bindValue(Cell $cell, $value)
     {
-        /**
-         * Paksa beberapa kolom jadi TEXT supaya:
-         * - No HP aman (tidak jadi scientific notation / hilang leading 0)
-         */
-        // A: Nama
-        // B: No HP
-        // C: Email
-        // D: Password
         $textCols = ['B'];
 
         if (in_array($cell->getColumn(), $textCols, true)) {
@@ -94,7 +86,7 @@ class KurirApkExport extends DefaultValueBinder implements
     public function columnFormats(): array
     {
         return [
-            'B' => NumberFormat::FORMAT_TEXT, // No HP
+            'B' => NumberFormat::FORMAT_TEXT,
         ];
     }
 }

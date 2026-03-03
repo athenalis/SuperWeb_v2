@@ -909,10 +909,15 @@ export default function AnalyticContent() {
           >
             <Icon icon="mdi:arrow-left" className="text-xl" />
           </button>
-          <div>
-            <h3 className="font-bold text-xl text-slate-800">Analisis Konten</h3>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <h3 className="font-bold text-xl text-slate-800">
+              Analisis Konten
+            </h3>
+
             {content?.title && (
-              <p className="text-md font-bold text-blue-700 mt-0.5">{content.title}</p>
+              <span className="text-lg font-bold text-blue-700">
+                {content.title}
+              </span>
             )}
           </div>
         </div>

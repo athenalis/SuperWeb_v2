@@ -104,7 +104,6 @@ class RelawanKunjunganImport implements ToCollection, WithHeadingRow
                 ->where('nik', $nik)
                 ->first();
 
-            // untuk import kunjungan: kalau sudah ada aktif => duplikat / atau sudah apk (nggak boleh upgrade)
             if ($existing && !$existing->trashed()) {
                 if ((int)$existing->paslon_id !== $paslonId) {
                     $this->failedRows[] = [
@@ -115,7 +114,6 @@ class RelawanKunjunganImport implements ToCollection, WithHeadingRow
                     continue;
                 }
 
-                // ✅ cek wilayah harus sama koor
                 if ((string)$existing->village_code !== (string)$koor->village_code) {
                     $kel = $existing->village->village ?? 'UNKNOWN';
                     $this->failedRows[] = [
@@ -143,7 +141,6 @@ class RelawanKunjunganImport implements ToCollection, WithHeadingRow
                 continue;
             }
 
-            // CREATE relawan kunjungan
             try {
                 DB::transaction(function () use ($data, $ormasId, $koor, $paslonId) {
                     $nameClean = Str::slug((string)$data['nama'], '');
@@ -180,7 +177,6 @@ class RelawanKunjunganImport implements ToCollection, WithHeadingRow
                         'koor_kunjungan_id' => (int)$koor->id,
                         'koor_apk_id' => null,
 
-                        // ✅ wilayah selalu dari koor
                         'province_code' => $koor->province_code,
                         'city_code'     => $koor->city_code,
                         'district_code' => $koor->district_code,

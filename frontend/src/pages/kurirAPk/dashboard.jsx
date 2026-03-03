@@ -483,7 +483,7 @@ export default function KurirDashboard() {
                                         : "Pastikan barang sudah diterima oleh koordinator dan serahkan bukti serah terima."}
                                 </p>
 
-                                {confirmAction === "selesai" && (
+                                {/* {confirmAction === "selesai" && (
                                     <div className="mt-4">
                                         <label className="block text-sm font-semibold text-slate-700 mb-2">
                                             Upload Bukti Serah Terima (opsional)
@@ -493,7 +493,7 @@ export default function KurirDashboard() {
                                             <p className="text-sm text-slate-500">Klik untuk upload foto</p>
                                         </div>
                                     </div>
-                                )}
+                                )} */}
                             </div>
 
                             <div className="p-5 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
@@ -541,18 +541,22 @@ export default function KurirDashboard() {
 
                             <div className="p-5 space-y-4">
                                 {/* Status */}
-                                <div>
-                                    <label className="text-xs font-bold text-slate-500 uppercase">Status</label>
-                                    <div
-                                        className={`mt-1 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border ${getStatusStyle(selectedTugas.status).bg
-                                            } ${getStatusStyle(selectedTugas.status).text} ${getStatusStyle(selectedTugas.status).border
-                                            }`}
-                                    >
-                                        <Icon icon={getStatusStyle(selectedTugas.status).icon} width={16} />
-                                        <span className="font-semibold">
-                                            {getStatusStyle(selectedTugas.status).label}
-                                        </span>
-                                    </div>
+                                <div className="flex items-center gap-3">
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                    Status
+                                </label>
+
+                                <div
+                                    className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border
+                                    ${getStatusStyle(selectedTugas.status).bg}
+                                    ${getStatusStyle(selectedTugas.status).text}
+                                    ${getStatusStyle(selectedTugas.status).border}`}
+                                >
+                                    <Icon icon={getStatusStyle(selectedTugas.status).icon} width={16} />
+                                    <span className="font-semibold">
+                                    {getStatusStyle(selectedTugas.status).label}
+                                    </span>
+                                </div>
                                 </div>
 
                                 {/* Items */}

@@ -192,7 +192,6 @@ export default function Navbar() {
 
   /* ===== SUB MENU ===== */
   const suaraMenus = [
-    { name: "Dashboard", path: "/suara/dashboard" },
     { name: "Paslon", path: "/suara/paslon" },
     { name: "Partai", path: "/suara/partai" },
     { name: "DPT", path: "/suara/dpt" },

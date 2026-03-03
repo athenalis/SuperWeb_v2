@@ -15,10 +15,6 @@ class ContentTypePlatform extends Model
 
     public $timestamps = false;
 
-    /* ======================
-        RELATION
-    ====================== */
-
     public function contentType()
     {
         return $this->belongsTo(ContentType::class);

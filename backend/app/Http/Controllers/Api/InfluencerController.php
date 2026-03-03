@@ -93,9 +93,6 @@ class InfluencerController extends Controller
         return response()->json($influencers);
     }
 
-    /**
-     * Optional helper buat label dropdown
-     */
     protected function makeDisplayName($influencer)
     {
         if ($influencer->platforms->isEmpty()) {
@@ -219,7 +216,6 @@ class InfluencerController extends Controller
             ], 422);
         }
 
-        // Normalisasi kontak
         $contacts = [];
         if ($hasContacts) {
             foreach ($validated['contacts'] as $phone) {
@@ -240,18 +236,14 @@ class InfluencerController extends Controller
         DB::beginTransaction();
 
         try {
-            /** ================= UPDATE MAIN DATA ================= */
             $influencer->update([
                 'name' => $validated['name'],
                 'email' => $validated['email'] ?? null,
                 'contacts' => $contacts,
             ]);
 
-            /** ================= SYNC PLATFORMS ================= */
-            // Hapus platform lama
             $influencer->platforms()->delete();
 
-            // Insert ulang platform baru
             foreach ($validated['platforms'] as $platform) {
                 $influencer->platforms()->create([
                     'platform_id' => $platform['platform_id'],

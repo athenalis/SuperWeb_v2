@@ -75,7 +75,6 @@ class KoordinatorKunjunganImport implements ToCollection, WithHeadingRow
 
             $headers = $this->mapHeader($row);
 
-            // TPS dihapus dari required
             $requiredHeaders = [
                 'nama'     => 'nama',
                 'nik'      => 'nik',
@@ -101,7 +100,6 @@ class KoordinatorKunjunganImport implements ToCollection, WithHeadingRow
                 continue;
             }
 
-            // normalisasi hp
             $rawPhone = $row[$headers['no_hp']] ?? '';
             $normalizedPhone = $this->normalizePhoneNumber((string) $rawPhone);
 
@@ -116,7 +114,6 @@ class KoordinatorKunjunganImport implements ToCollection, WithHeadingRow
 
             $row[$headers['no_hp']] = $normalizedPhone;
 
-            // validasi (TPS dihapus)
             $validator = Validator::make($row->toArray(), [
                 $headers['nama']     => 'required|string|max:255',
                 $headers['nik']      => 'required|digits:16',
@@ -140,7 +137,6 @@ class KoordinatorKunjunganImport implements ToCollection, WithHeadingRow
             $nik = (string) $row[$headers['nik']];
             $hp  = (string) $row[$headers['no_hp']];
 
-            // duplikasi lintas tabel
             $existsNik = DB::table($this->tableKunjungan)->where('nik', $nik)->whereNull('deleted_at')->exists()
                 || DB::table('apk_koordinators')->where('nik', $nik)->whereNull('deleted_at')->exists()
                 || DB::table('relawans')->where('nik', $nik)->whereNull('deleted_at')->exists();
@@ -167,7 +163,6 @@ class KoordinatorKunjunganImport implements ToCollection, WithHeadingRow
                 continue;
             }
 
-            // lokasi (pakai mapping lama)
             $province = $this->findLocation(Province::class, $row[$headers['province']]);
             $city     = $this->findLocation(City::class, $row[$headers['city']], 'province_code', $province?->province_code);
             $district = $this->findLocation(District::class, $row[$headers['district']], 'city_code', $city?->city_code);
@@ -188,7 +183,6 @@ class KoordinatorKunjunganImport implements ToCollection, WithHeadingRow
                 continue;
             }
 
-            // limit 2 per desa
             $existingCount = DB::table($this->tableKunjungan)
                 ->where('village_code', $village->village_code)
                 ->whereNull('deleted_at')
@@ -205,7 +199,6 @@ class KoordinatorKunjunganImport implements ToCollection, WithHeadingRow
                 continue;
             }
 
-            // simpan
             try {
                 DB::transaction(function () use ($row, $headers, $province, $city, $district, $village, $nik, $hp) {
                     $nameClean = Str::slug((string) $row[$headers['nama']], '');
@@ -300,7 +293,6 @@ class KoordinatorKunjunganImport implements ToCollection, WithHeadingRow
         return array_unique($errors);
     }
 
-    // === mapping lokasi kamu (copy dari logic lama) ===
     private function normalizeLocationName($modelClass, string $input): string
     {
         $input = trim(strtoupper($input));

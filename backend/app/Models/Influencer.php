@@ -15,18 +15,15 @@ class Influencer extends Model
         'contacts',
     ];
 
-    // CAST contacts JSON ke array
     protected $casts = [
         'contacts' => 'array',
     ];
 
-    // RELASI: influencer punya banyak platform
     public function platforms()
     {
         return $this->hasMany(InfluencerPlatform::class, 'influencer_id');
     }
 
-    // RELASI: influencer bisa dipakai di banyak content plan
 
     public function contentPlans()
     {

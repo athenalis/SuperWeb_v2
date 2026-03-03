@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Models\Role;
 use App\Models\Relawan;
 use App\Models\CourierApk;
@@ -16,8 +15,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable, SoftDeletes; // ⬅️ WAJIB coba lu test aja di postman (ara)
+    use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
 
     /**
      * The attributes that are mass assignable.
@@ -80,10 +78,10 @@ class User extends Authenticatable
         return $this->hasOneThrough(
             Paslon::class,
             AdminPaslon::class,
-            'user_id',    // FK di admin_paslons
+            'user_id',
             'id',         // PK di paslons
             'id',         // PK di users
-            'paslon_id'   // FK ke paslons
+            'paslon_id'
         );
     }
 
@@ -109,8 +107,7 @@ class User extends Authenticatable
 
     public function getRoleSlugAttribute()
     {
-        // role relation -> ambil string slug role
-        return $this->role?->role; // contoh: "kunjungan_koordinator"
+        return $this->role?->role;
     }
 
     public function credential()
@@ -127,7 +124,6 @@ class User extends Authenticatable
 
     public function hasRole(string $slug): bool
     {
-        // kalau relasi role ada
         if ($this->relationLoaded('role') || method_exists($this, 'role')) {
             return $this->role?->role === $slug; 
         }

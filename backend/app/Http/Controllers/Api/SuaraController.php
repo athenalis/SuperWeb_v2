@@ -135,7 +135,6 @@ public function diagramPartai(Request $request)
 
     $query = DB::table('suara_partai');
 
-    // filter wilayah (opsional)
     $query->when($request->city_code, fn ($q) =>
         $q->where('city_code', $request->city_code)
     );
